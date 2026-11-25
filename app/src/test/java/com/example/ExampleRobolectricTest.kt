@@ -303,4 +303,42 @@ class ExampleRobolectricTest {
     assertTrue(footer.contains("参考来源"))
     assertTrue(footer.contains("[星瞳 - 虚拟歌手百科](https://example.com/xingtong)"))
   }
+
+  @Test
+  fun `playlist cover configs JSON round-trip preserves single, custom, and random modes`() {
+    val input = mapOf(
+      com.example.model.PlaylistCoverKeys.artist("星瞳") to com.example.model.PlaylistCoverConfig(
+        mode = com.example.model.PlaylistCoverMode.SINGLE_TRACK,
+        trackIds = listOf("track_lumen")
+      ),
+      com.example.model.PlaylistCoverKeys.custom(7L) to com.example.model.PlaylistCoverConfig(
+        mode = com.example.model.PlaylistCoverMode.CUSTOM_COLLAGE,
+        trackIds = listOf("a", "b", "c", "d")
+      ),
+      com.example.model.PlaylistCoverKeys.FAVORITES to com.example.model.PlaylistCoverConfig(
+        mode = com.example.model.PlaylistCoverMode.RANDOM_COLLAGE,
+        randomSeed = 998877L
+      )
+    )
+    val raw = PreferencesRepository.serializePlaylistCoverConfigsJson(input)
+    val decoded = PreferencesRepository.parsePlaylistCoverConfigsJson(raw)
+    assertEquals(3, decoded.size)
+    assertEquals(
+      com.example.model.PlaylistCoverMode.SINGLE_TRACK,
+      decoded[com.example.model.PlaylistCoverKeys.artist("星瞳")]?.mode
+    )
+    assertEquals(
+      listOf("track_lumen"),
+      decoded[com.example.model.PlaylistCoverKeys.artist("星瞳")]?.trackIds
+    )
+    assertEquals(
+      listOf("a", "b", "c", "d"),
+      decoded[com.example.model.PlaylistCoverKeys.custom(7L)]?.trackIds
+    )
+    assertEquals(
+      998877L,
+      decoded[com.example.model.PlaylistCoverKeys.FAVORITES]?.randomSeed
+    )
+  }
 }
+

@@ -20,7 +20,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,24 +33,29 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Equalizer
 import androidx.compose.material.icons.rounded.FilterAlt
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
+import com.example.model.AppVersionInfo
 import com.example.model.HapticProfile
 import com.example.model.LYRIC_FONT_SCALE_TIERS
 import com.example.model.LyricSettings
@@ -76,11 +84,12 @@ import com.example.model.ScanFilterConfig
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScale
 import com.example.ui.theme.ChampagneGold
+import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     darkTheme: Boolean,
@@ -109,6 +118,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var newExcludeFolder by remember { mutableStateOf("") }
+    var showReleaseNotesSheet by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -121,8 +131,30 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Column {
-                Text("声学工坊与偏好", style = MaterialTheme.typography.headlineLarge)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("声学工坊与偏好", style = MaterialTheme.typography.headlineLarge)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(RubyAccent.copy(alpha = 0.14f))
+                            .border(0.75.dp, RubyAccent.copy(alpha = 0.42f), RoundedCornerShape(50))
+                            .clickable { showReleaseNotesSheet = true }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .testTag("settings_header_version_badge")
+                    ) {
+                        Text(
+                            text = "v${AppVersionInfo.CURRENT_VERSION}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = RubyAccent
+                        )
+                    }
+                }
                 Text(
                     "定制智能扫描筛选规则、多源逐字歌词引擎、触觉震动与 AI 思考强度",
                     style = MaterialTheme.typography.bodySmall,
@@ -827,6 +859,212 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 2
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // About & Semantic Version Changelog Card
+        item {
+            val latestNote = AppVersionInfo.RELEASE_NOTES.first()
+            SettingsCard(
+                icon = Icons.Rounded.NewReleases,
+                title = "关于 ${AppVersionInfo.APP_DISPLAY_NAME} 与版本记录",
+                subtitle = "语义版本 v${AppVersionInfo.CURRENT_VERSION} · ${AppVersionInfo.APK_COMPAT_LABEL}"
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "v${latestNote.version}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = RubyAccent
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(EmeraldLossless.copy(alpha = 0.16f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = latestNote.tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = EmeraldLossless
+                                )
+                            }
+                        }
+                        Text(
+                            text = "基线 v${AppVersionInfo.PREVIOUS_VERSION}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = latestNote.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    latestNote.highlights.forEach { itemText ->
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            Text(
+                                text = "•",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ChampagneGold,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = itemText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = { showReleaseNotesSheet = true },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_open_release_notes_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("查看完整版本更新记录（共 ${AppVersionInfo.RELEASE_NOTES.size} 个版本）")
+                }
+            }
+        }
+    }
+
+    if (showReleaseNotesSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showReleaseNotesSheet = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 18.dp)
+                    .padding(bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "${AppVersionInfo.APP_DISPLAY_NAME} 版本更新日志",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "当前 v${AppVersionInfo.CURRENT_VERSION} · ${AppVersionInfo.APK_COMPAT_LABEL}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(AppVersionInfo.RELEASE_NOTES, key = { it.version }) { release ->
+                        val isCurrent = release.version == AppVersionInfo.CURRENT_VERSION
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .border(
+                                    width = if (isCurrent) 1.dp else 0.5.dp,
+                                    color = if (isCurrent) RubyAccent.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "v${release.version}",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isCurrent) RubyAccent else MaterialTheme.colorScheme.onSurface
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (isCurrent) EmeraldLossless.copy(alpha = 0.16f)
+                                            else MaterialTheme.colorScheme.surfaceContainerHighest
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = release.tag,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isCurrent) EmeraldLossless else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Text(
+                                text = release.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                release.highlights.forEach { bullet ->
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        Text(
+                                            text = "•",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isCurrent) RubyAccent else ChampagneGold,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = bullet,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }

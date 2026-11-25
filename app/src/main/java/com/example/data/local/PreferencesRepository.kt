@@ -21,6 +21,8 @@ import com.example.model.HapticProfile
 import com.example.model.LyricSettings
 import com.example.model.LyricSource
 import com.example.model.NavBarStyle
+import com.example.model.PlaylistCoverConfig
+import com.example.model.PlaylistCoverMode
 import com.example.model.ReasoningEffortLevel
 import com.example.model.ScanFilterConfig
 import com.example.model.normalizeEqBands
@@ -91,6 +93,9 @@ class PreferencesRepository(private val context: Context) {
         val AI_ATTACH_CATALOG_CUSTOMIZED = booleanPreferencesKey("ai_attach_catalog_customized")
         val AI_ATTACH_CATALOG_TRACK_IDS = stringSetPreferencesKey("ai_attach_catalog_track_ids")
         val AI_ATTACH_CATALOG_LYRIC_IDS = stringSetPreferencesKey("ai_attach_catalog_lyric_ids")
+
+        // Playlist Cover Customization (Custom, Artist Auto, and Smart Collections)
+        val PLAYLIST_COVER_CONFIGS_JSON = stringPreferencesKey("playlist_cover_configs_json")
     }
 
     val darkThemeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -213,6 +218,10 @@ class PreferencesRepository(private val context: Context) {
         )
     }
 
+    val playlistCoverConfigsFlow: Flow<Map<String, PlaylistCoverConfig>> = context.auralisDataStore.data.map { prefs ->
+        parsePlaylistCoverConfigsJson(prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON])
+    }
+
     suspend fun setDarkTheme(dark: Boolean) {
         context.auralisDataStore.edit { it[Keys.DARK_THEME] = dark }
     }
@@ -326,6 +335,22 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun updatePlaylistCoverConfig(collectionKey: String, config: PlaylistCoverConfig?) {
+        val normalizedKey = collectionKey.trim()
+        if (normalizedKey.isEmpty()) return
+        context.auralisDataStore.edit { prefs ->
+            val current = parsePlaylistCoverConfigsJson(prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON]).toMutableMap()
+            if (config == null || config.isDefault) {
+                current.remove(normalizedKey)
+            } else {
+                current[normalizedKey] = config.copy(
+                    trackIds = config.trackIds.filter { it.isNotBlank() }.distinct().take(4)
+                )
+            }
+            prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON] = serializePlaylistCoverConfigsJson(current)
+        }
+    }
+
     companion object {
         fun parseCustomPresetsJson(raw: String?): List<EqPreset> {
             if (raw.isNullOrBlank()) return emptyList()
@@ -368,6 +393,53 @@ class PreferencesRepository(private val context: Context) {
                 )
             }
             return arr.toString()
+        }
+
+        fun parsePlaylistCoverConfigsJson(raw: String?): Map<String, PlaylistCoverConfig> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            return runCatching {
+                val root = JSONObject(raw)
+                val result = linkedMapOf<String, PlaylistCoverConfig>()
+                val keys = root.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val obj = root.optJSONObject(key) ?: continue
+                    val mode = PlaylistCoverMode.fromStored(obj.optString("mode", ""))
+                    val idsArr = obj.optJSONArray("trackIds")
+                    val ids = if (idsArr != null) {
+                        (0 until idsArr.length())
+                            .mapNotNull { idx -> idsArr.optString(idx, "").takeIf { it.isNotBlank() } }
+                            .distinct()
+                            .take(4)
+                    } else {
+                        emptyList()
+                    }
+                    val seed = obj.optLong("randomSeed", 0L)
+                    val cfg = PlaylistCoverConfig(mode = mode, trackIds = ids, randomSeed = seed)
+                    if (!cfg.isDefault) {
+                        result[key] = cfg
+                    }
+                }
+                result
+            }.getOrDefault(emptyMap())
+        }
+
+        fun serializePlaylistCoverConfigsJson(configs: Map<String, PlaylistCoverConfig>): String {
+            val root = JSONObject()
+            configs.forEach { (key, config) ->
+                if (key.isNotBlank() && !config.isDefault) {
+                    val idsArr = JSONArray()
+                    config.trackIds.filter { it.isNotBlank() }.distinct().take(4).forEach { idsArr.put(it) }
+                    root.put(
+                        key,
+                        JSONObject()
+                            .put("mode", config.mode.name)
+                            .put("trackIds", idsArr)
+                            .put("randomSeed", config.randomSeed)
+                    )
+                }
+            }
+            return root.toString()
         }
     }
 }

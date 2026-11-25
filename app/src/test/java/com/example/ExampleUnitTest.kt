@@ -428,4 +428,88 @@ class ExampleUnitTest {
         assertEquals("星瞳 - 百度百科", refLinks[0].title)
         assertEquals("https://baike.baidu.com/item/xingtong", refLinks[0].url)
     }
+
+    @Test
+    fun playlistCoverResolverHandlesAutoSingleCustomAndSeededRandomModes() {
+        fun trackWithArt(id: String, art: String?) = Track(
+            id = id,
+            contentUri = "content://media/$id",
+            title = "Song $id",
+            artist = "星瞳",
+            album = "Album $id",
+            durationMs = 210_000L,
+            sizeBytes = 12_000_000L,
+            folderPath = "Music",
+            fileName = "$id.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC",
+            artworkPath = art
+        )
+
+        val tracks = listOf(
+            trackWithArt("t1", "/art/1.jpg"),
+            trackWithArt("t2", "/art/2.jpg"),
+            trackWithArt("t3", "/art/3.jpg"),
+            trackWithArt("t4", "/art/4.jpg"),
+            trackWithArt("t5", "/art/5.jpg"),
+            trackWithArt("t6", null)
+        )
+
+        // 1. Default Auto Collage takes first 4 distinct artworks
+        val auto = com.example.ui.components.resolvePlaylistCover(tracks, null)
+        assertFalse(auto.renderAsSingle)
+        assertEquals(listOf("t1", "t2", "t3", "t4"), auto.slots.map { it.trackId })
+
+        // 2. Single Track mode forces full-bleed single cover for chosen track
+        val single = com.example.ui.components.resolvePlaylistCover(
+            tracks,
+            com.example.model.PlaylistCoverConfig(
+                mode = com.example.model.PlaylistCoverMode.SINGLE_TRACK,
+                trackIds = listOf("t5")
+            )
+        )
+        assertTrue(single.renderAsSingle)
+        assertEquals(listOf("t5"), single.slots.map { it.trackId })
+
+        // 3. Custom Collage preserves exact user order across 4 chosen songs
+        val custom = com.example.ui.components.resolvePlaylistCover(
+            tracks,
+            com.example.model.PlaylistCoverConfig(
+                mode = com.example.model.PlaylistCoverMode.CUSTOM_COLLAGE,
+                trackIds = listOf("t5", "t3", "t1", "t4")
+            )
+        )
+        assertFalse(custom.renderAsSingle)
+        assertEquals(listOf("t5", "t3", "t1", "t4"), custom.slots.map { it.trackId })
+
+        // 4. Random Collage is deterministic for the same seed and picks 4 tracks with art
+        val randA = com.example.ui.components.resolvePlaylistCover(
+            tracks,
+            com.example.model.PlaylistCoverConfig(
+                mode = com.example.model.PlaylistCoverMode.RANDOM_COLLAGE,
+                randomSeed = 42L
+            )
+        )
+        val randASame = com.example.ui.components.resolvePlaylistCover(
+            tracks,
+            com.example.model.PlaylistCoverConfig(
+                mode = com.example.model.PlaylistCoverMode.RANDOM_COLLAGE,
+                randomSeed = 42L
+            )
+        )
+        assertFalse(randA.renderAsSingle)
+        assertEquals(4, randA.slots.size)
+        assertEquals(randA.slots.map { it.trackId }, randASame.slots.map { it.trackId })
+        assertTrue(randA.slots.none { it.trackId == "t6" })
+    }
+
+    @Test
+    fun appVersionInfoTracksSemanticVersionFromBaseline090To091() {
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 2)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+    }
 }
+

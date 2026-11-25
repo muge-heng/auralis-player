@@ -23,11 +23,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.example.model.PlaylistCoverConfig
+import com.example.model.PlaylistCoverMode
 import com.example.model.Track
 import com.example.model.isValidMusicTag
 import com.example.ui.theme.AuraViolet
 import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.RubyAccent
+import kotlin.random.Random
 
 data class ArtistAutoPlaylist(
     val artistName: String,
@@ -35,6 +38,113 @@ data class ArtistAutoPlaylist(
     val losslessCount: Int,
     val albumCount: Int
 )
+
+data class CoverArtSlot(
+    val trackId: String,
+    val title: String,
+    val artworkPath: String?,
+    val albumArtUri: String?
+)
+
+data class ResolvedPlaylistCover(
+    val slots: List<CoverArtSlot>,
+    val renderAsSingle: Boolean
+)
+
+fun Track.artworkDedupKey(): String? =
+    artworkPath?.takeIf { it.isNotBlank() } ?: albumArtUri?.takeIf { it.isNotBlank() }
+
+fun Track.hasArtwork(): Boolean = artworkDedupKey() != null
+
+private fun Track.toCoverArtSlot(): CoverArtSlot = CoverArtSlot(
+    trackId = id,
+    title = title,
+    artworkPath = artworkPath,
+    albumArtUri = albumArtUri
+)
+
+/**
+ * Resolves which cover artwork slots to display for a playlist given an optional [PlaylistCoverConfig].
+ * Supports:
+ * - AUTO_COLLAGE: first 4 distinct artworks (or 1 hero if fewer than 4 distinct artworks exist)
+ * - SINGLE_TRACK: exact chosen track artwork rendered full-bleed
+ * - CUSTOM_COLLAGE: user-chosen track order (up to 4), gracefully handling missing tracks
+ * - RANDOM_COLLAGE: deterministic seeded random pick of up to 4 distinct artworks (zero flicker)
+ */
+fun resolvePlaylistCover(
+    tracks: List<Track>,
+    config: PlaylistCoverConfig?
+): ResolvedPlaylistCover {
+    val tracksWithArt = tracks.filter { it.hasArtwork() }
+    if (tracksWithArt.isEmpty()) {
+        return ResolvedPlaylistCover(slots = emptyList(), renderAsSingle = true)
+    }
+    val distinctArtTracks = tracksWithArt.distinctBy { it.artworkDedupKey() }
+    val byId = tracksWithArt.associateBy { it.id }
+
+    return when (config?.mode ?: PlaylistCoverMode.AUTO_COLLAGE) {
+        PlaylistCoverMode.AUTO_COLLAGE -> {
+            if (distinctArtTracks.size >= 4) {
+                ResolvedPlaylistCover(
+                    slots = distinctArtTracks.take(4).map { it.toCoverArtSlot() },
+                    renderAsSingle = false
+                )
+            } else {
+                ResolvedPlaylistCover(
+                    slots = listOf(distinctArtTracks.first().toCoverArtSlot()),
+                    renderAsSingle = true
+                )
+            }
+        }
+
+        PlaylistCoverMode.SINGLE_TRACK -> {
+            val chosen = config?.trackIds
+                ?.firstNotNullOfOrNull { id -> byId[id] }
+                ?: distinctArtTracks.first()
+            ResolvedPlaylistCover(
+                slots = listOf(chosen.toCoverArtSlot()),
+                renderAsSingle = true
+            )
+        }
+
+        PlaylistCoverMode.CUSTOM_COLLAGE -> {
+            val selected = config?.trackIds
+                .orEmpty()
+                .mapNotNull { id -> byId[id] }
+                .distinctBy { it.id }
+                .take(4)
+                .toMutableList()
+            if (selected.isEmpty()) {
+                // Fall back to default auto collage if no valid tracks remain
+                return resolvePlaylistCover(tracks, null)
+            }
+            // If user picked fewer than 4, fill remaining slots from distinct artworks only if needed for a full 4-tile grid
+            if (selected.size in 2..3 && distinctArtTracks.size >= 4) {
+                val chosenIds = selected.map { it.id }.toSet()
+                val chosenArtKeys = selected.mapNotNull { it.artworkDedupKey() }.toSet()
+                val extras = distinctArtTracks.filter { it.id !in chosenIds && it.artworkDedupKey() !in chosenArtKeys }
+                for (extra in extras) {
+                    if (selected.size >= 4) break
+                    selected.add(extra)
+                }
+            }
+            ResolvedPlaylistCover(
+                slots = selected.map { it.toCoverArtSlot() },
+                renderAsSingle = selected.size == 1
+            )
+        }
+
+        PlaylistCoverMode.RANDOM_COLLAGE -> {
+            val pool = if (distinctArtTracks.size >= 4) distinctArtTracks else tracksWithArt
+            val seed = config?.randomSeed?.takeIf { it != 0L } ?: 1L
+            val shuffled = pool.shuffled(Random(seed)).take(4)
+            ResolvedPlaylistCover(
+                slots = shuffled.map { it.toCoverArtSlot() },
+                renderAsSingle = shuffled.size <= 1
+            )
+        }
+    }
+}
 
 /**
  * Splits multi-artist strings (e.g. "扇宝/星瞳", "周杰伦、费玉清", "A & B") into clean individual
@@ -94,10 +204,7 @@ fun formatCollectionTotalDuration(tracks: List<Track>): String {
 
 /**
  * Editorial multi-cover collage / hero cover artwork for playlists and artist auto-collections.
- * - 4+ distinct artworks -> crisp 2x2 vinyl mosaic
- * - 2-3 distinct artworks -> balanced side-by-side split or single hero artwork
- * - 1 artwork -> full-bleed studio cover
- * - 0 artworks -> tasteful gradient studio emblem
+ * Supports optional user-configured [coverConfig] (single cover, custom 4-track collage, or seeded random 4-track collage).
  */
 @Composable
 fun PlaylistCoverArt(
@@ -106,16 +213,13 @@ fun PlaylistCoverArt(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 18.dp,
     preferSingleHero: Boolean = false,
+    coverConfig: PlaylistCoverConfig? = null,
     fallbackIcon: ImageVector = Icons.Rounded.Album,
     fallbackGradient: List<Color> = listOf(RubyAccent.copy(alpha = 0.8f), AuraViolet.copy(alpha = 0.85f), Color(0xFF1A1429))
 ) {
-    val distinctCovers = tracks
-        .mapNotNull { t ->
-            val key = t.artworkPath?.takeIf { it.isNotBlank() } ?: t.albumArtUri?.takeIf { it.isNotBlank() }
-            if (key != null) key to (t.artworkPath to t.albumArtUri) else null
-        }
-        .distinctBy { it.first }
-        .map { it.second }
+    val resolved = resolvePlaylistCover(tracks, coverConfig)
+    val slots = resolved.slots
+    val forceSingle = preferSingleHero && (coverConfig == null || coverConfig.mode == PlaylistCoverMode.AUTO_COLLAGE)
 
     Box(
         modifier = modifier
@@ -125,7 +229,7 @@ fun PlaylistCoverArt(
         contentAlignment = Alignment.Center
     ) {
         when {
-            distinctCovers.isEmpty() -> {
+            slots.isEmpty() -> {
                 Icon(
                     imageVector = fallbackIcon,
                     contentDescription = contentDescription,
@@ -133,16 +237,86 @@ fun PlaylistCoverArt(
                     modifier = Modifier.size(34.dp)
                 )
             }
-            preferSingleHero || distinctCovers.size < 4 -> {
-                val (artPath, artUri) = distinctCovers.first()
+
+            forceSingle || resolved.renderAsSingle || slots.size == 1 -> {
+                val hero = slots.first()
                 TrackArtwork(
-                    artworkPath = artPath,
-                    albumArtUri = artUri,
+                    artworkPath = hero.artworkPath,
+                    albumArtUri = hero.albumArtUri,
                     contentDescription = contentDescription,
                     modifier = Modifier.fillMaxSize(),
                     cornerRadius = cornerRadius
                 )
             }
+
+            slots.size == 2 -> {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(1.5.dp)
+                ) {
+                    TrackArtwork(
+                        artworkPath = slots[0].artworkPath,
+                        albumArtUri = slots[0].albumArtUri,
+                        contentDescription = contentDescription,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        cornerRadius = 0.dp
+                    )
+                    TrackArtwork(
+                        artworkPath = slots[1].artworkPath,
+                        albumArtUri = slots[1].albumArtUri,
+                        contentDescription = contentDescription,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        cornerRadius = 0.dp
+                    )
+                }
+            }
+
+            slots.size == 3 -> {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(1.5.dp)
+                ) {
+                    TrackArtwork(
+                        artworkPath = slots[0].artworkPath,
+                        albumArtUri = slots[0].albumArtUri,
+                        contentDescription = contentDescription,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        cornerRadius = 0.dp
+                    )
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        verticalArrangement = Arrangement.spacedBy(1.5.dp)
+                    ) {
+                        TrackArtwork(
+                            artworkPath = slots[1].artworkPath,
+                            albumArtUri = slots[1].albumArtUri,
+                            contentDescription = contentDescription,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            cornerRadius = 0.dp
+                        )
+                        TrackArtwork(
+                            artworkPath = slots[2].artworkPath,
+                            albumArtUri = slots[2].albumArtUri,
+                            contentDescription = contentDescription,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            cornerRadius = 0.dp
+                        )
+                    }
+                }
+            }
+
             else -> {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -155,8 +329,8 @@ fun PlaylistCoverArt(
                         horizontalArrangement = Arrangement.spacedBy(1.5.dp)
                     ) {
                         TrackArtwork(
-                            artworkPath = distinctCovers[0].first,
-                            albumArtUri = distinctCovers[0].second,
+                            artworkPath = slots[0].artworkPath,
+                            albumArtUri = slots[0].albumArtUri,
                             contentDescription = contentDescription,
                             modifier = Modifier
                                 .weight(1f)
@@ -164,8 +338,8 @@ fun PlaylistCoverArt(
                             cornerRadius = 0.dp
                         )
                         TrackArtwork(
-                            artworkPath = distinctCovers[1].first,
-                            albumArtUri = distinctCovers[1].second,
+                            artworkPath = slots[1].artworkPath,
+                            albumArtUri = slots[1].albumArtUri,
                             contentDescription = contentDescription,
                             modifier = Modifier
                                 .weight(1f)
@@ -180,8 +354,8 @@ fun PlaylistCoverArt(
                         horizontalArrangement = Arrangement.spacedBy(1.5.dp)
                     ) {
                         TrackArtwork(
-                            artworkPath = distinctCovers[2].first,
-                            albumArtUri = distinctCovers[2].second,
+                            artworkPath = slots[2].artworkPath,
+                            albumArtUri = slots[2].albumArtUri,
                             contentDescription = contentDescription,
                             modifier = Modifier
                                 .weight(1f)
@@ -189,8 +363,8 @@ fun PlaylistCoverArt(
                             cornerRadius = 0.dp
                         )
                         TrackArtwork(
-                            artworkPath = distinctCovers[3].first,
-                            albumArtUri = distinctCovers[3].second,
+                            artworkPath = slots[3].artworkPath,
+                            albumArtUri = slots[3].albumArtUri,
                             contentDescription = contentDescription,
                             modifier = Modifier
                                 .weight(1f)
@@ -203,3 +377,4 @@ fun PlaylistCoverArt(
         }
     }
 }
+

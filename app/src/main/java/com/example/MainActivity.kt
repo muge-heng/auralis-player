@@ -201,6 +201,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val customEqPresets by viewModel.customEqPresets.collectAsStateWithLifecycle()
     val aiConfig by viewModel.aiConfig.collectAsStateWithLifecycle()
     val aiCatalogAttachmentPrefs by viewModel.aiCatalogAttachmentPrefs.collectAsStateWithLifecycle()
+    val playlistCoverConfigs by viewModel.playlistCoverConfigs.collectAsStateWithLifecycle()
     val aiSessions by viewModel.aiSessions.collectAsStateWithLifecycle()
     val activeAiSessionId by viewModel.activeAiSessionId.collectAsStateWithLifecycle()
     val activeAiMessages by viewModel.activeAiMessages.collectAsStateWithLifecycle()
@@ -603,6 +604,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             mostPlayed = mostPlayed,
                             playlists = playlists,
                             playlistTracksMap = playlistTracksMap,
+                            playlistCoverConfigs = playlistCoverConfigs,
                             currentTrackId = currentTrack?.id,
                             isPlaying = playbackState.isPlaying,
                             onCreatePlaylist = { name, desc -> viewModel.createPlaylist(name, desc) },
@@ -610,6 +612,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onRenamePlaylist = viewModel::renamePlaylist,
                             onDeletePlaylist = viewModel::deletePlaylist,
                             onClearPlaylist = viewModel::clearPlaylist,
+                            onUpdatePlaylistCoverConfig = viewModel::updatePlaylistCoverConfig,
                             onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
                             onPlayAll = { tracks, shuffle -> viewModel.playAll(tracks, shuffle) },
                             onPlayNext = viewModel::playNextInQueue,

@@ -233,3 +233,40 @@ data class AuraPalette(
     val deepHex: Long = 0xFF1A1024,
     val glowHex: Long = 0xFFF0C28A
 )
+
+enum class PlaylistCoverMode(
+    val label: String,
+    val shortLabel: String,
+    val subtitle: String
+) {
+    AUTO_COLLAGE("自动四宫格", "自动四图", "自动取歌单内前 4 张不同曲目封面拼贴"),
+    SINGLE_TRACK("单曲封面", "单曲大图", "指定歌单内某一首曲目的封面作为独幅封面"),
+    CUSTOM_COLLAGE("自选四宫格", "自选四图", "自由指定最多 4 首曲目封面及四宫格排布顺序"),
+    RANDOM_COLLAGE("随机四宫格", "随机四图", "随机抽取歌单内 4 张曲目封面拼贴，支持随时换一批");
+
+    companion object {
+        fun fromStored(raw: String?): PlaylistCoverMode {
+            if (raw.isNullOrBlank()) return AUTO_COLLAGE
+            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: AUTO_COLLAGE
+        }
+    }
+}
+
+data class PlaylistCoverConfig(
+    val mode: PlaylistCoverMode = PlaylistCoverMode.AUTO_COLLAGE,
+    val trackIds: List<String> = emptyList(),
+    val randomSeed: Long = 0L
+) {
+    val isDefault: Boolean
+        get() = mode == PlaylistCoverMode.AUTO_COLLAGE && trackIds.isEmpty() && randomSeed == 0L
+}
+
+object PlaylistCoverKeys {
+    const val FAVORITES = "smart:favorites"
+    const val RECENT = "smart:recent"
+    const val MOST_PLAYED = "smart:most_played"
+
+    fun custom(playlistId: Long): String = "custom:$playlistId"
+    fun artist(artistName: String): String = "artist:${artistName.trim()}"
+}
+

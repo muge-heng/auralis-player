@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Search
@@ -78,12 +79,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.model.PlaylistCoverConfig
+import com.example.model.PlaylistCoverKeys
 import com.example.model.PlaylistWithCount
 import com.example.model.Track
 import com.example.ui.components.ArtistAutoPlaylist
 import com.example.ui.components.BatchPlaylistPickerDialog
 import com.example.ui.components.LibraryTrackSelectorDialog
 import com.example.ui.components.PlaylistCoverArt
+import com.example.ui.components.PlaylistCoverEditorSheet
 import com.example.ui.components.bouncyClickable
 import com.example.ui.components.buildArtistAutoPlaylists
 import com.example.ui.components.formatCollectionTotalDuration
@@ -101,6 +105,23 @@ private sealed interface ActiveCollectionKey {
     data class Custom(val playlistId: Long) : ActiveCollectionKey
 }
 
+private fun ActiveCollectionKey.coverStorageKey(): String? = when (this) {
+    ActiveCollectionKey.Favorites -> PlaylistCoverKeys.FAVORITES
+    ActiveCollectionKey.Recent -> PlaylistCoverKeys.RECENT
+    ActiveCollectionKey.MostPlayed -> PlaylistCoverKeys.MOST_PLAYED
+    is ActiveCollectionKey.Artist -> PlaylistCoverKeys.artist(artistName)
+    is ActiveCollectionKey.Custom -> PlaylistCoverKeys.custom(playlistId)
+    ActiveCollectionKey.ArtistsDirectory -> null
+}
+
+private data class PlaylistCoverEditorTarget(
+    val storageKey: String,
+    val title: String,
+    val tracks: List<Track>,
+    val fallbackIcon: ImageVector,
+    val heroAccent: Color
+)
+
 @Composable
 fun PlaylistsScreen(
     allTracks: List<Track>,
@@ -109,6 +130,7 @@ fun PlaylistsScreen(
     mostPlayed: List<Track>,
     playlists: List<PlaylistWithCount>,
     playlistTracksMap: Map<Long, List<Track>>,
+    playlistCoverConfigs: Map<String, PlaylistCoverConfig> = emptyMap(),
     currentTrackId: String?,
     isPlaying: Boolean,
     onCreatePlaylist: (String, String) -> Unit,
@@ -116,6 +138,7 @@ fun PlaylistsScreen(
     onRenamePlaylist: (Long, String, String) -> Unit,
     onDeletePlaylist: (Long) -> Unit,
     onClearPlaylist: (Long) -> Unit,
+    onUpdatePlaylistCoverConfig: (String, PlaylistCoverConfig?) -> Unit = { _, _ -> },
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: (List<Track>, Boolean) -> Unit,
     onPlayNext: (Track) -> Unit,
@@ -149,6 +172,7 @@ fun PlaylistsScreen(
     var saveSmartAsPlaylistDefaults by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var saveSmartName by remember { mutableStateOf("") }
     var pendingConfirmAction by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var coverEditorTarget by remember { mutableStateOf<PlaylistCoverEditorTarget?>(null) }
 
     when (val activeKey = selectedKey) {
         null -> {
@@ -159,6 +183,7 @@ fun PlaylistsScreen(
                 mostPlayed = mostPlayed,
                 playlists = playlists,
                 playlistTracksMap = playlistTracksMap,
+                playlistCoverConfigs = playlistCoverConfigs,
                 contentBottomPadding = contentBottomPadding,
                 onCreatePlaylistClick = { showCreateDialog = true },
                 onSelectCollection = { key ->
@@ -173,6 +198,15 @@ fun PlaylistsScreen(
                     renameTarget = item
                     renameName = item.playlist.name
                     renameDesc = item.playlist.description
+                },
+                onCustomizeCover = { item, plTracks ->
+                    coverEditorTarget = PlaylistCoverEditorTarget(
+                        storageKey = PlaylistCoverKeys.custom(item.playlist.id),
+                        title = item.playlist.name,
+                        tracks = plTracks,
+                        fallbackIcon = Icons.Rounded.Album,
+                        heroAccent = RubyAccent
+                    )
                 },
                 onRequestClearPlaylist = { item ->
                     pendingConfirmAction = "确定清空「${item.playlist.name}」内的全部曲目吗？" to {
@@ -191,6 +225,7 @@ fun PlaylistsScreen(
             BackHandler { selectedKey = null }
             ArtistsDirectoryView(
                 artists = artistCollections,
+                playlistCoverConfigs = playlistCoverConfigs,
                 contentBottomPadding = contentBottomPadding,
                 onBack = { selectedKey = null },
                 onOpenArtist = { artistName ->
@@ -390,6 +425,30 @@ fun PlaylistsScreen(
                                                 expanded = detailMenuExpanded,
                                                 onDismissRequest = { detailMenuExpanded = false }
                                             ) {
+                                                val storageKey = activeKey.coverStorageKey()
+                                                if (collectionTracks.isNotEmpty() && storageKey != null) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("设置歌单封面") },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.PhotoLibrary,
+                                                                contentDescription = null,
+                                                                tint = heroAccent
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            detailMenuExpanded = false
+                                                            coverEditorTarget = PlaylistCoverEditorTarget(
+                                                                storageKey = storageKey,
+                                                                title = collectionTitle,
+                                                                tracks = collectionTracks,
+                                                                fallbackIcon = fallbackIcon,
+                                                                heroAccent = heroAccent
+                                                            )
+                                                        },
+                                                        modifier = Modifier.testTag("collection_customize_cover_menu_item")
+                                                    )
+                                                }
                                                 if (collectionTracks.isNotEmpty()) {
                                                     DropdownMenuItem(
                                                         text = { Text("随机播放此列表") },
@@ -506,6 +565,7 @@ fun PlaylistsScreen(
                                 }
 
                                 // Large Centered Hero Playlist Cover Art
+                                val activeCoverConfig = activeKey.coverStorageKey()?.let { playlistCoverConfigs[it] }
                                 Box(
                                     modifier = Modifier
                                         .size(196.dp)
@@ -520,6 +580,7 @@ fun PlaylistsScreen(
                                         tracks = collectionTracks,
                                         contentDescription = collectionTitle,
                                         cornerRadius = 24.dp,
+                                        coverConfig = activeCoverConfig,
                                         fallbackIcon = fallbackIcon,
                                         fallbackGradient = listOf(
                                             heroAccent.copy(alpha = 0.85f),
@@ -1218,6 +1279,20 @@ fun PlaylistsScreen(
             }
         )
     }
+
+    coverEditorTarget?.let { target ->
+        PlaylistCoverEditorSheet(
+            playlistTitle = target.title,
+            tracks = target.tracks,
+            initialConfig = playlistCoverConfigs[target.storageKey],
+            fallbackIcon = target.fallbackIcon,
+            heroAccent = target.heroAccent,
+            onSave = { newConfig ->
+                onUpdatePlaylistCoverConfig(target.storageKey, newConfig)
+            },
+            onDismiss = { coverEditorTarget = null }
+        )
+    }
 }
 
 @Composable
@@ -1228,6 +1303,7 @@ private fun PlaylistsOverviewContent(
     mostPlayed: List<Track>,
     playlists: List<PlaylistWithCount>,
     playlistTracksMap: Map<Long, List<Track>>,
+    playlistCoverConfigs: Map<String, PlaylistCoverConfig>,
     contentBottomPadding: Int,
     onCreatePlaylistClick: () -> Unit,
     onSelectCollection: (ActiveCollectionKey) -> Unit,
@@ -1235,6 +1311,7 @@ private fun PlaylistsOverviewContent(
     onAppendToQueue: (List<Track>) -> Unit,
     onQuickAddTracks: (Long) -> Unit,
     onEditPlaylist: (PlaylistWithCount) -> Unit,
+    onCustomizeCover: (PlaylistWithCount, List<Track>) -> Unit,
     onRequestClearPlaylist: (PlaylistWithCount) -> Unit,
     onRequestDeletePlaylist: (PlaylistWithCount) -> Unit
 ) {
@@ -1310,6 +1387,7 @@ private fun PlaylistsOverviewContent(
                         icon = Icons.Rounded.Favorite,
                         gradient = listOf(Color(0xFFE11D48), Color(0xFF7B152A)),
                         previewTracks = favoriteTracks,
+                        coverConfig = playlistCoverConfigs[PlaylistCoverKeys.FAVORITES],
                         onClick = { onSelectCollection(ActiveCollectionKey.Favorites) },
                         modifier = Modifier
                             .weight(1f)
@@ -1325,6 +1403,7 @@ private fun PlaylistsOverviewContent(
                         icon = Icons.Rounded.Person,
                         gradient = listOf(Color(0xFF0D9488), Color(0xFF134E4A)),
                         previewTracks = topArtistCoverTracks,
+                        coverConfig = null,
                         onClick = { onSelectCollection(ActiveCollectionKey.ArtistsDirectory) },
                         modifier = Modifier
                             .weight(1f)
@@ -1341,6 +1420,7 @@ private fun PlaylistsOverviewContent(
                         icon = Icons.Rounded.History,
                         gradient = listOf(AuraViolet, Color(0xFF281D5E)),
                         previewTracks = recentlyPlayed,
+                        coverConfig = playlistCoverConfigs[PlaylistCoverKeys.RECENT],
                         onClick = { onSelectCollection(ActiveCollectionKey.Recent) },
                         modifier = Modifier
                             .weight(1f)
@@ -1352,6 +1432,7 @@ private fun PlaylistsOverviewContent(
                         icon = Icons.Rounded.LocalFireDepartment,
                         gradient = listOf(Color(0xFFD99A4E), Color(0xFF6B4214)),
                         previewTracks = mostPlayed,
+                        coverConfig = playlistCoverConfigs[PlaylistCoverKeys.MOST_PLAYED],
                         onClick = { onSelectCollection(ActiveCollectionKey.MostPlayed) },
                         modifier = Modifier
                             .weight(1f)
@@ -1447,6 +1528,7 @@ private fun PlaylistsOverviewContent(
                         tracks = plTracks,
                         contentDescription = item.playlist.name,
                         cornerRadius = 16.dp,
+                        coverConfig = playlistCoverConfigs[PlaylistCoverKeys.custom(item.playlist.id)],
                         modifier = Modifier.size(66.dp)
                     )
                     Spacer(modifier = Modifier.width(14.dp))
@@ -1532,6 +1614,22 @@ private fun PlaylistsOverviewContent(
                                     }
                                 )
                             }
+                            if (plTracks.isNotEmpty()) {
+                                DropdownMenuItem(
+                                    text = { Text("设置歌单封面") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.PhotoLibrary,
+                                            contentDescription = null,
+                                            tint = RubyAccent
+                                        )
+                                    },
+                                    onClick = {
+                                        rowMenuExpanded = false
+                                        onCustomizeCover(item, plTracks)
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("编辑歌单名与介绍") },
                                 onClick = {
@@ -1566,6 +1664,7 @@ private fun PlaylistsOverviewContent(
 @Composable
 private fun ArtistsDirectoryView(
     artists: List<ArtistAutoPlaylist>,
+    playlistCoverConfigs: Map<String, PlaylistCoverConfig>,
     contentBottomPadding: Int,
     onBack: () -> Unit,
     onOpenArtist: (String) -> Unit,
@@ -1702,6 +1801,7 @@ private fun ArtistsDirectoryView(
                         tracks = artist.tracks,
                         contentDescription = artist.artistName,
                         cornerRadius = 16.dp,
+                        coverConfig = playlistCoverConfigs[PlaylistCoverKeys.artist(artist.artistName)],
                         fallbackIcon = Icons.Rounded.Person,
                         fallbackGradient = listOf(Color(0xFF0D9488), Color(0xFF134E4A)),
                         modifier = Modifier.size(60.dp)
@@ -1800,6 +1900,7 @@ private fun SmartCollectionTile(
     icon: ImageVector,
     gradient: List<Color>,
     previewTracks: List<Track>,
+    coverConfig: PlaylistCoverConfig? = null,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1839,6 +1940,7 @@ private fun SmartCollectionTile(
                     contentDescription = title,
                     cornerRadius = 10.dp,
                     preferSingleHero = true,
+                    coverConfig = coverConfig,
                     modifier = Modifier
                         .size(38.dp)
                         .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp))

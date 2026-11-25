@@ -17,7 +17,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -79,10 +81,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.LYRIC_FONT_SCALE_TIERS
 import com.example.model.LyricDocument
+import com.example.model.LyricFormat
 import com.example.model.LyricLine
 import com.example.model.LyricSettings
 import com.example.model.LyricWord
@@ -214,34 +218,60 @@ fun LyricStageView(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp),
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    val isToggleableLineSync = document.hasSyncedTimestamps && !document.lines.any { it.isWordSyncedNative }
+                    val shortFormatTag = when (document.format) {
+                        LyricFormat.LRC -> "LRC"
+                        LyricFormat.SRT -> "SRT"
+                        LyricFormat.QRC -> "QRC"
+                        LyricFormat.YRC -> "YRC"
+                        LyricFormat.KRC -> "KRC"
+                        LyricFormat.ENHANCED_LRC -> "LRC+"
+                        LyricFormat.TTML -> "TTML"
+                        LyricFormat.PLAIN -> "纯文本"
+                        LyricFormat.NONE -> "无歌词"
+                    }
+                    val badgeText = when {
+                        document.isEmpty -> "无歌词"
+                        document.isSimulatedWordSync -> "$shortFormatTag·模拟"
+                        isToggleableLineSync -> shortFormatTag
+                        else -> document.format.label
+                    }
+
+                    // Left scrollable group of compact status & mode pills (prevents cramping on narrow widths)
                     Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
-                        val badgeText = when {
-                            document.isEmpty -> "无歌词"
-                            document.isSimulatedWordSync -> "${document.format.label} · 模拟"
-                            else -> document.format.label
-                        }
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(pillBg)
-                                .border(0.75.dp, pillBorder, RoundedCornerShape(50))
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .border(
+                                    0.75.dp,
+                                    if (document.isSimulatedWordSync) accentInk.copy(alpha = 0.36f) else pillBorder,
+                                    RoundedCornerShape(50)
+                                )
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                                .testTag("lyric_format_badge")
                         ) {
                             Text(
                                 text = badgeText,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ink.copy(alpha = 0.92f)
+                                color = ink.copy(alpha = 0.92f),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        if (document.hasSyncedTimestamps && !document.lines.any { it.isWordSyncedNative }) {
+                        if (isToggleableLineSync) {
                             val simActive = settings.enableSimulatedWordByWord
                             Box(
                                 modifier = Modifier
@@ -257,7 +287,7 @@ fun LyricStageView(
                                         RoundedCornerShape(50)
                                     )
                                     .clickable { onToggleSimulatedWordByWord(!simActive) }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
                                     .testTag("toggle_simulated_word_lyrics")
                             ) {
                                 Row(
@@ -273,17 +303,14 @@ fun LyricStageView(
                                     Text(
                                         text = if (simActive) "逐字" else "逐行",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (simActive) accentInk else ink.copy(alpha = 0.72f)
+                                        color = if (simActive) accentInk else ink.copy(alpha = 0.72f),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
                         }
-                    }
 
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
                         // Immersive Lyrics Toggle Pill
                         if (!document.isEmpty) {
                             Box(
@@ -297,7 +324,7 @@ fun LyricStageView(
                                         showTypographyControls = false
                                         onUpdateLyricSettings(settings.copy(enableImmersiveLyrics = !settings.enableImmersiveLyrics))
                                     }
-                                    .padding(horizontal = 9.dp, vertical = 6.dp)
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
                                     .testTag("toggle_immersive_lyrics")
                             ) {
                                 Row(
@@ -308,12 +335,14 @@ fun LyricStageView(
                                         imageVector = Icons.Rounded.Fullscreen,
                                         contentDescription = "开启沉浸歌词",
                                         tint = if (settings.enableImmersiveLyrics) accentInk else ink,
-                                        modifier = Modifier.size(14.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Text(
                                         text = "沉浸",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (settings.enableImmersiveLyrics) accentInk else ink
+                                        color = if (settings.enableImmersiveLyrics) accentInk else ink,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -334,7 +363,7 @@ fun LyricStageView(
                                     RoundedCornerShape(50)
                                 )
                                 .clickable { showTypographyControls = !showTypographyControls }
-                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                                 .testTag("toggle_lyric_font_panel")
                         ) {
                             Row(
@@ -345,45 +374,50 @@ fun LyricStageView(
                                     imageVector = Icons.Rounded.FormatSize,
                                     contentDescription = "调节歌词字重与字号",
                                     tint = if (showTypographyControls) accentInk else ink,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Text(
                                     text = "字重",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (showTypographyControls) accentInk else ink
+                                    color = if (showTypographyControls) accentInk else ink,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
+                    }
 
-                        // Lyric Manager / Multi-source Search Pill
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(pillBg)
-                                .clickable(onClick = onOpenLyricManager)
-                                .padding(horizontal = 9.dp, vertical = 6.dp)
-                                .testTag("open_lyric_manager_button")
+                    // Pinned right-hand Lyric Manager / Multi-source Search Pill (guaranteed single-line)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(pillBg)
+                            .border(0.75.dp, pillBorder, RoundedCornerShape(50))
+                            .clickable(onClick = onOpenLyricManager)
+                            .padding(horizontal = 9.dp, vertical = 5.dp)
+                            .testTag("open_lyric_manager_button")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Tune,
-                                    contentDescription = "歌词匹配与校准",
-                                    tint = ink,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = if (document.globalOffsetMs != 0L) {
-                                        "${if (document.globalOffsetMs > 0) "+" else ""}${document.globalOffsetMs / 1000f}s"
-                                    } else {
-                                        "匹配/源"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = ink
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = "歌词匹配与校准",
+                                tint = ink,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (document.globalOffsetMs != 0L) {
+                                    "${if (document.globalOffsetMs > 0) "+" else ""}${document.globalOffsetMs / 1000f}s"
+                                } else {
+                                    "匹配/源"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ink,
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }

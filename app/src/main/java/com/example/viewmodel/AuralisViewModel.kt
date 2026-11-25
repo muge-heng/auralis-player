@@ -141,6 +141,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     val aiCatalogAttachmentPrefs: StateFlow<AiCatalogAttachmentPrefs> = prefs.aiCatalogAttachmentPrefsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiCatalogAttachmentPrefs())
 
+    val playlistCoverConfigs: StateFlow<Map<String, com.example.model.PlaylistCoverConfig>> = prefs.playlistCoverConfigsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val allTracks: StateFlow<List<Track>> = trackDao.observeAllTracks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -1251,8 +1254,17 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             playlistDao.clearPlaylistTracks(playlistId)
             playlistDao.deletePlaylist(playlistId)
+            prefs.updatePlaylistCoverConfig(com.example.model.PlaylistCoverKeys.custom(playlistId), null)
             haptics.tickLight()
             showBanner("已删除歌单")
+        }
+    }
+
+    fun updatePlaylistCoverConfig(collectionKey: String, config: com.example.model.PlaylistCoverConfig?) {
+        viewModelScope.launch {
+            prefs.updatePlaylistCoverConfig(collectionKey, config)
+            haptics.tickLight()
+            showBanner(if (config == null || config.isDefault) "已恢复默认歌单封面" else "已更新歌单封面样式")
         }
     }
 
