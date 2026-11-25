@@ -1,0 +1,8 @@
+{
+  "name": "Remix Aura Music",
+  "description": "A premium, AI-powered local music player featuring fluid animations, precise lyric synchronization, and a sophisticated, high-aesthetic interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

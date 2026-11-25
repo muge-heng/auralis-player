@@ -1,0 +1,937 @@
+package com.example
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.util.lerp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.model.NavBarStyle
+import com.example.model.ScanFilterConfig
+import com.example.ui.components.ImportConflictDialog
+import com.example.ui.components.LiquidGlassNavBar
+import com.example.ui.components.LiquidGlassNavItem
+import com.example.ui.components.MiniPlayerBar
+import com.example.ui.components.MorphingFloatingArtwork
+import com.example.ui.components.SmartScanConfirmDialog
+import com.example.ui.screens.AiChatScreen
+import com.example.ui.screens.DuplicateManagerSheet
+import com.example.ui.screens.EqualizerSheet
+import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.LyricsManagerSheet
+import com.example.ui.screens.NowPlayingSheet
+import com.example.ui.screens.NowPlayingStage
+import com.example.ui.screens.PlaylistsScreen
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.theme.AuralisTheme
+import com.example.ui.theme.RubyAccent
+import com.example.viewmodel.AuralisViewModel
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
+
+enum class MainDestination(val labelRes: Int, val icon: ImageVector) {
+    LIBRARY(R.string.nav_library, Icons.Rounded.LibraryMusic),
+    PLAYLISTS(R.string.nav_playlists, Icons.AutoMirrored.Rounded.QueueMusic),
+    AI_STUDIO(R.string.nav_ai_studio, Icons.Rounded.AutoAwesome),
+    SETTINGS(R.string.nav_settings, Icons.Rounded.Tune)
+}
+
+class MainActivity : ComponentActivity() {
+
+    private val viewModel: AuralisViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
+
+        handleIncomingIntent(intent)
+
+        setContent {
+            val darkTheme by viewModel.darkTheme.collectAsStateWithLifecycle()
+            DisposableEffect(darkTheme) {
+                enableEdgeToEdge(
+                    statusBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT
+                        )
+                    },
+                    navigationBarStyle = if (darkTheme) {
+                        SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(
+                            android.graphics.Color.TRANSPARENT,
+                            android.graphics.Color.TRANSPARENT
+                        )
+                    }
+                )
+                onDispose {}
+            }
+            AuralisTheme(darkTheme = darkTheme) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    AuralisRootApp(viewModel = viewModel)
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_VIEW) {
+            val uri: Uri? = intent.data
+            if (uri != null) {
+                viewModel.handleExternalAudioIntent(uri)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AuralisRootApp(viewModel: AuralisViewModel) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
+    val auraPalette by viewModel.auraPalette.collectAsStateWithLifecycle()
+    val allTracks by viewModel.allTracks.collectAsStateWithLifecycle()
+    val musicTracks by viewModel.musicTracks.collectAsStateWithLifecycle()
+    val generalAudioTracks by viewModel.generalAudioTracks.collectAsStateWithLifecycle()
+    val filteredTracks by viewModel.filteredTracks.collectAsStateWithLifecycle()
+    val filteredGeneralAudioTracks by viewModel.filteredGeneralAudioTracks.collectAsStateWithLifecycle()
+    val favoriteTracks by viewModel.favoriteTracks.collectAsStateWithLifecycle()
+    val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val mostPlayed by viewModel.mostPlayed.collectAsStateWithLifecycle()
+    val playlists by viewModel.playlists.collectAsStateWithLifecycle()
+    val playlistTracksMap by viewModel.playlistTracksMap.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val formatFilter by viewModel.formatFilter.collectAsStateWithLifecycle()
+    val sortOption by viewModel.sortOption.collectAsStateWithLifecycle()
+    val selectedFolder by viewModel.selectedFolder.collectAsStateWithLifecycle()
+    val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
+    val currentLyric by viewModel.currentLyric.collectAsStateWithLifecycle()
+    val lyricSettings by viewModel.lyricSettings.collectAsStateWithLifecycle()
+    val onlineLyricSearch by viewModel.onlineLyricSearch.collectAsStateWithLifecycle()
+    val eqState by viewModel.eqState.collectAsStateWithLifecycle()
+    val customEqPresets by viewModel.customEqPresets.collectAsStateWithLifecycle()
+    val aiConfig by viewModel.aiConfig.collectAsStateWithLifecycle()
+    val aiCatalogAttachmentPrefs by viewModel.aiCatalogAttachmentPrefs.collectAsStateWithLifecycle()
+    val aiSessions by viewModel.aiSessions.collectAsStateWithLifecycle()
+    val activeAiSessionId by viewModel.activeAiSessionId.collectAsStateWithLifecycle()
+    val activeAiMessages by viewModel.activeAiMessages.collectAsStateWithLifecycle()
+    val aiSessionRuntimeStates by viewModel.aiSessionRuntimeStates.collectAsStateWithLifecycle()
+    val darkTheme by viewModel.darkTheme.collectAsStateWithLifecycle()
+    val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
+    val showLibraryHero by viewModel.showLibraryHero.collectAsStateWithLifecycle()
+    val enableGeneralAudioMode by viewModel.enableGeneralAudioMode.collectAsStateWithLifecycle()
+    val hapticProfile by viewModel.hapticProfile.collectAsStateWithLifecycle()
+    val scanFilter by viewModel.scanFilter.collectAsStateWithLifecycle()
+    val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
+    val openNowPlayingTrigger by viewModel.openNowPlayingTrigger.collectAsStateWithLifecycle()
+    val duplicateGroups by viewModel.duplicateGroups.collectAsStateWithLifecycle()
+    val pendingImportConflicts by viewModel.pendingImportConflicts.collectAsStateWithLifecycle()
+    val pendingImportSourceLabel by viewModel.pendingImportSourceLabel.collectAsStateWithLifecycle()
+
+    var currentTab by remember { mutableStateOf(MainDestination.LIBRARY) }
+    var showEqualizer by remember { mutableStateOf(false) }
+    var showLyricsManager by remember { mutableStateOf(false) }
+    var showDuplicateManager by remember { mutableStateOf(false) }
+    var showSmartScanDialog by remember { mutableStateOf(false) }
+    var pendingScanConfig by remember { mutableStateOf<ScanFilterConfig?>(null) }
+
+    // Continuous, follow-finger interruptible expansion progress: 0f = MiniPlayer, 1f = Full NowPlaying
+    val playerExpansion = remember { Animatable(0f) }
+    var miniArtworkRect by remember { mutableStateOf(Rect.Zero) }
+    var activeSheetArtworkRect by remember { mutableStateOf(Rect.Zero) }
+    var activeSheetArtworkCornerDp by remember { mutableStateOf(24.dp) }
+    var activeNowPlayingStage by remember { mutableStateOf(NowPlayingStage.COVER) }
+
+    fun expandNowPlaying() {
+        scope.launch {
+            playerExpansion.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            )
+        }
+    }
+
+    fun collapseNowPlaying() {
+        scope.launch {
+            playerExpansion.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            )
+        }
+    }
+
+    fun openAiWorkspace() {
+        viewModel.haptics.tickLight()
+        if (playerExpansion.value > 0.05f) {
+            collapseNowPlaying()
+        }
+        currentTab = MainDestination.AI_STUDIO
+    }
+
+    LaunchedEffect(openNowPlayingTrigger) {
+        if (openNowPlayingTrigger) {
+            expandNowPlaying()
+            viewModel.consumeOpenNowPlayingTrigger()
+        }
+    }
+
+    LaunchedEffect(statusBanner) {
+        statusBanner?.let { msg ->
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(msg, duration = androidx.compose.material3.SnackbarDuration.Short)
+            viewModel.dismissBanner()
+        }
+    }
+
+    BackHandler(enabled = playerExpansion.value > 0.5f && !showEqualizer && !showLyricsManager) {
+        viewModel.haptics.tickLight()
+        collapseNowPlaying()
+    }
+
+    // Audio Permission Launcher (Android 13+ READ_MEDIA_AUDIO / Android <=12 READ_EXTERNAL_STORAGE)
+    val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val configToUse = pendingScanConfig
+        pendingScanConfig = null
+        if (granted) {
+            if (configToUse != null) {
+                viewModel.scanDeviceLibraryWithConfig(configToUse)
+            } else {
+                viewModel.scanDeviceLibrary()
+            }
+        } else {
+            viewModel.showBanner("未授予本地音频权限，你仍可通过「导入单曲」或「文件夹」零权限播放")
+        }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    // SAF Multi-Audio Picker
+    val audioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importAudioFiles(uris, playImmediately = allTracks.isEmpty())
+        }
+    }
+
+    // SAF Folder Tree Picker
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { treeUri ->
+        treeUri?.let { viewModel.importFolder(it) }
+    }
+
+    // SAF Lyric File Picker (.qrc, .yrc, .krc, .lrc, .ttml, .srt, .txt)
+    val lyricPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        val activeTrack = playbackState.currentTrack
+        if (uri != null && activeTrack != null) {
+            viewModel.importLyricFileForTrack(activeTrack, uri)
+        }
+    }
+
+    fun requestSmartScanDialog() {
+        viewModel.haptics.tickLight()
+        showSmartScanDialog = true
+    }
+
+    fun executeSmartScanWithConfig(config: ScanFilterConfig) {
+        viewModel.haptics.springImpact()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        val granted = ContextCompat.checkSelfPermission(context, audioPermission) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            viewModel.scanDeviceLibraryWithConfig(config)
+        } else {
+            pendingScanConfig = config
+            permissionLauncher.launch(audioPermission)
+        }
+    }
+
+    val currentTrack = playbackState.currentTrack
+    val showMiniBarInTab = currentTrack != null && currentTab != MainDestination.AI_STUDIO
+    val miniPlayerExtraBottomDp = if (showMiniBarInTab) 88 else 8
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val useNavigationRail = maxWidth >= 600.dp
+        val containerWidthPx = with(density) { maxWidth.toPx().coerceAtLeast(1f) }
+        val containerHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
+        val statusBarTopPx = WindowInsets.statusBars.getTop(density).toFloat()
+        val expansion = playerExpansion.value.coerceIn(0f, 1f)
+
+        // Deterministic pre-layout cover rect so frame 1 of expand NEVER snaps from Rect.Zero
+        val estimatedCoverRect = remember(containerWidthPx, containerHeightPx, statusBarTopPx, playbackState.isPlaying) {
+            val baseSizePx = with(density) {
+                minOf(maxWidth - 48.dp, 316.dp).toPx().coerceAtLeast(160f)
+            }
+            val scale = if (playbackState.isPlaying) 1f else 0.91f
+            val visualSizePx = baseSizePx * scale
+            val left = (containerWidthPx - visualSizePx) / 2f
+            val top = statusBarTopPx + with(density) { 104.dp.toPx() } + (baseSizePx - visualSizePx) / 2f
+            Rect(left = left, top = top, right = left + visualSizePx, bottom = top + visualSizePx)
+        }
+
+        val effectiveTargetArtworkRect = if (activeSheetArtworkRect != Rect.Zero) {
+            activeSheetArtworkRect
+        } else {
+            estimatedCoverRect
+        }
+
+        // Works seamlessly for BOTH Cover stage (large artwork) and Lyrics/Queue stage (compact top header artwork)
+        val isMorphingArt = currentTrack != null &&
+            showMiniBarInTab &&
+            expansion in 0.002f..0.996f &&
+            miniArtworkRect != Rect.Zero &&
+            effectiveTargetArtworkRect != Rect.Zero
+
+        val miniArtAlpha = if (isMorphingArt) 0f else 1f
+        val fullArtAlpha = if (isMorphingArt) 0f else 1f
+
+        val handleMiniDragStart: () -> Unit = {
+            scope.launch { playerExpansion.stop() }
+        }
+        val handleMiniDragDelta: (Float) -> Unit = { deltaY ->
+            scope.launch {
+                val next = (playerExpansion.value - deltaY / containerHeightPx).coerceIn(0f, 1.04f)
+                playerExpansion.snapTo(next)
+            }
+        }
+        val handleMiniDragEnd: (Float) -> Unit = { velY ->
+            val shouldExpand = velY < -420f || (velY <= 350f && playerExpansion.value > 0.24f)
+            if (shouldExpand) {
+                viewModel.haptics.springImpact()
+                expandNowPlaying()
+            } else {
+                collapseNowPlaying()
+            }
+        }
+
+        val handleSheetDragStart: () -> Unit = {
+            scope.launch { playerExpansion.stop() }
+        }
+        val handleSheetDragDelta: (Float) -> Unit = { deltaY ->
+            scope.launch {
+                val next = (playerExpansion.value - deltaY / containerHeightPx).coerceIn(0f, 1.02f)
+                playerExpansion.snapTo(next)
+            }
+        }
+        val handleSheetDragEnd: (Float) -> Unit = { velY ->
+            // Lowered velocity & distance threshold so swift moderate downward flicks reliably collapse
+            val shouldCollapse = velY > 320f || (velY >= -300f && playerExpansion.value < 0.86f)
+            if (shouldCollapse) {
+                viewModel.haptics.tickLight()
+                collapseNowPlaying()
+            } else {
+                expandNowPlaying()
+            }
+        }
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val depthScale = lerp(1f, 0.94f, expansion)
+                    scaleX = depthScale
+                    scaleY = depthScale
+                    alpha = lerp(1f, 0.84f, expansion)
+                },
+            bottomBar = {
+                if (!useNavigationRail) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (showMiniBarInTab && currentTrack != null) {
+                            val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
+                            MiniPlayerBar(
+                                track = currentTrack,
+                                previousTrack = playbackState.previousTrack,
+                                nextTrack = playbackState.nextTrack,
+                                isPlaying = playbackState.isPlaying,
+                                progressFraction = playbackState.positionMs.toFloat() / dur.toFloat(),
+                                auraPalette = auraPalette,
+                                darkTheme = darkTheme,
+                                artworkAlpha = miniArtAlpha,
+                                onArtworkBoundsChanged = { rect ->
+                                    if (playerExpansion.value < 0.04f) {
+                                        miniArtworkRect = rect
+                                    }
+                                },
+                                onExpand = {
+                                    viewModel.haptics.springImpact()
+                                    expandNowPlaying()
+                                },
+                                onDragExpandStart = handleMiniDragStart,
+                                onDragExpandDelta = handleMiniDragDelta,
+                                onDragExpandEnd = handleMiniDragEnd,
+                                onTogglePlayPause = { viewModel.togglePlayPause() },
+                                onSkipNext = { viewModel.skipNext() },
+                                onSkipPrevious = { viewModel.skipPrevious() }
+                            )
+                        }
+                        if (navBarStyle == NavBarStyle.FLOATING_GLASS) {
+                            val glassItems = MainDestination.entries.map { dest ->
+                                LiquidGlassNavItem(
+                                    id = dest.name,
+                                    label = stringResource(dest.labelRes),
+                                    icon = dest.icon,
+                                    testTag = "nav_${dest.name.lowercase()}"
+                                )
+                            }
+                            LiquidGlassNavBar(
+                                items = glassItems,
+                                selectedIndex = MainDestination.entries.indexOf(currentTab).coerceAtLeast(0),
+                                darkTheme = darkTheme,
+                                accentColor = RubyAccent,
+                                onSelectIndex = { idx ->
+                                    val target = MainDestination.entries.getOrNull(idx)
+                                    if (target != null) {
+                                        viewModel.haptics.tickLight()
+                                        currentTab = target
+                                    }
+                                }
+                            )
+                        } else {
+                            NavigationBar(
+                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                            ) {
+                                MainDestination.entries.forEach { dest ->
+                                    NavigationBarItem(
+                                        selected = currentTab == dest,
+                                        onClick = {
+                                            viewModel.haptics.tickLight()
+                                            currentTab = dest
+                                        },
+                                        icon = { Icon(dest.icon, contentDescription = stringResource(dest.labelRes)) },
+                                        label = { Text(stringResource(dest.labelRes)) },
+                                        modifier = Modifier.testTag("nav_${dest.name.lowercase()}")
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+            ) {
+                if (useNavigationRail) {
+                    NavigationRail(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .statusBarsPadding()
+                    ) {
+                        MainDestination.entries.forEach { dest ->
+                            NavigationRailItem(
+                                selected = currentTab == dest,
+                                onClick = {
+                                    viewModel.haptics.tickLight()
+                                    currentTab = dest
+                                },
+                                icon = { Icon(dest.icon, contentDescription = stringResource(dest.labelRes)) },
+                                label = { Text(stringResource(dest.labelRes)) },
+                                modifier = Modifier.testTag("nav_rail_${dest.name.lowercase()}")
+                            )
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    when (currentTab) {
+                        MainDestination.LIBRARY -> LibraryScreen(
+                            musicTracks = musicTracks,
+                            filteredMusicTracks = filteredTracks,
+                            generalAudioTracks = generalAudioTracks,
+                            filteredGeneralAudioTracks = filteredGeneralAudioTracks,
+                            showHeroBanner = showLibraryHero,
+                            enableGeneralAudioMode = enableGeneralAudioMode,
+                            currentTrackId = currentTrack?.id,
+                            isPlaying = playbackState.isPlaying,
+                            searchQuery = searchQuery,
+                            formatFilter = formatFilter,
+                            sortOption = sortOption,
+                            selectedFolder = selectedFolder,
+                            scanProgress = scanProgress,
+                            playlists = playlists,
+                            onSearchChange = viewModel::updateSearchQuery,
+                            onFormatFilterChange = viewModel::updateFormatFilter,
+                            onSortChange = viewModel::updateSortOption,
+                            onSelectFolder = viewModel::selectFolder,
+                            onRequestSmartScan = ::requestSmartScanDialog,
+                            onImportAudioFiles = { audioPickerLauncher.launch(arrayOf("audio/*")) },
+                            onImportFolder = { folderPickerLauncher.launch(null) },
+                            onHideHeroBanner = {
+                                viewModel.haptics.tickLight()
+                                viewModel.setShowLibraryHero(false)
+                                viewModel.showBanner("已隐藏首页顶部卡片，可随时在「工坊」重新显示或导入音频")
+                            },
+                            onSetTracksGeneralAudio = viewModel::setTracksGeneralAudio,
+                            onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
+                            onPlayAll = { tracks, shuffle -> viewModel.playAll(tracks, shuffle) },
+                            onPlayNext = viewModel::playNextInQueue,
+                            onAppendToQueue = viewModel::appendTracksToQueue,
+                            onToggleFavorite = viewModel::toggleFavorite,
+                            onBatchFavorite = viewModel::batchFavoriteTracks,
+                            onAddToPlaylist = viewModel::addTrackToPlaylist,
+                            onBatchAddToPlaylist = viewModel::batchAddTracksToPlaylist,
+                            onCreatePlaylistWithTracks = viewModel::createPlaylist,
+                            onBatchRemoveFromLibrary = viewModel::batchRemoveTracksFromLibrary,
+                            duplicateGroupCount = duplicateGroups.size,
+                            duplicateRedundantCount = duplicateGroups.sumOf { it.redundantCount },
+                            onOpenDuplicateManager = { showDuplicateManager = true },
+                            onOpenAiStudio = ::openAiWorkspace,
+                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                        )
+
+                        MainDestination.PLAYLISTS -> PlaylistsScreen(
+                            allTracks = musicTracks,
+                            favoriteTracks = favoriteTracks,
+                            recentlyPlayed = recentlyPlayed,
+                            mostPlayed = mostPlayed,
+                            playlists = playlists,
+                            playlistTracksMap = playlistTracksMap,
+                            currentTrackId = currentTrack?.id,
+                            isPlaying = playbackState.isPlaying,
+                            onCreatePlaylist = { name, desc -> viewModel.createPlaylist(name, desc) },
+                            onCreatePlaylistWithTracks = viewModel::createPlaylist,
+                            onRenamePlaylist = viewModel::renamePlaylist,
+                            onDeletePlaylist = viewModel::deletePlaylist,
+                            onClearPlaylist = viewModel::clearPlaylist,
+                            onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
+                            onPlayAll = { tracks, shuffle -> viewModel.playAll(tracks, shuffle) },
+                            onPlayNext = viewModel::playNextInQueue,
+                            onAppendToQueue = viewModel::appendTracksToQueue,
+                            onToggleFavorite = viewModel::toggleFavorite,
+                            onBatchFavorite = viewModel::batchFavoriteTracks,
+                            onAddToPlaylist = viewModel::addTrackToPlaylist,
+                            onBatchAddToPlaylist = viewModel::batchAddTracksToPlaylist,
+                            onRemoveFromPlaylist = viewModel::removeTracksFromPlaylist,
+                            onMovePlaylistTrack = viewModel::movePlaylistTrack,
+                            onClearRecentHistory = viewModel::clearRecentHistory,
+                            onRemoveFromRecent = viewModel::removeFromRecentHistory,
+                            onClearMostPlayed = viewModel::clearMostPlayedStats,
+                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                        )
+
+                        MainDestination.AI_STUDIO -> AiChatScreen(
+                            aiConfig = aiConfig,
+                            sessions = aiSessions,
+                            activeSessionId = activeAiSessionId,
+                            messages = activeAiMessages,
+                            sessionRuntimeStates = aiSessionRuntimeStates,
+                            currentTrack = currentTrack?.takeIf { !it.isGeneralAudio },
+                            musicTracks = musicTracks,
+                            catalogAttachmentPrefs = aiCatalogAttachmentPrefs,
+                            onCreateSession = viewModel::createNewAiSession,
+                            onSelectSession = viewModel::selectAiSession,
+                            onRenameSession = viewModel::renameAiSession,
+                            onRegenerateSessionTitle = { sessionId ->
+                                viewModel.regenerateSessionTitle(sessionId, showFeedbackToast = true)
+                            },
+                            onDeleteSession = viewModel::deleteAiSession,
+                            onSendMessage = { text, attachTrack, attachVision, attachCatalog ->
+                                viewModel.sendAiMessage(
+                                    userText = text,
+                                    attachTrackContext = attachTrack,
+                                    attachCoverVision = attachVision,
+                                    attachLibraryCatalog = attachCatalog
+                                )
+                            },
+                            onRunQuickTask = { task, attachVision, attachCatalog ->
+                                viewModel.runQuickAiTask(
+                                    task = task,
+                                    attachCoverVision = attachVision,
+                                    attachLibraryCatalog = attachCatalog
+                                )
+                            },
+                            onStopGeneration = viewModel::stopAiGeneration,
+                            onFeedbackErrorToModel = viewModel::sendErrorFeedbackToModel,
+                            onRetryLastMessage = viewModel::retryLastAiMessage,
+                            onUpdateReasoningEffort = viewModel::updateReasoningEffort,
+                            onToggleExtendedReasoningLevel = viewModel::toggleExtendedReasoningLevel,
+                            onDetentHaptic = viewModel::triggerReasoningDetentHaptic,
+                            onToggleWebSearch = viewModel::toggleAiWebSearch,
+                            onUpdateCatalogAttachmentPrefs = viewModel::updateAiCatalogAttachmentPrefs,
+                            onUpdateAiConfig = viewModel::updateAiConfig,
+                            onApplySuggestedEq = { preset ->
+                                viewModel.applyEqPreset(preset)
+                                showEqualizer = true
+                            },
+                            onApplyAndSaveSuggestedEq = { preset ->
+                                viewModel.applyAndSaveEqPreset(preset)
+                                showEqualizer = true
+                            },
+                            onCreatePlaylistFromAi = viewModel::createPlaylistFromAiSuggestion,
+                            onPlayCuratedTitles = { titles ->
+                                viewModel.playCuratedTracks(titles)
+                            },
+                            onCopiedNotice = viewModel::showBanner,
+                            contentBottomPadding = 0
+                        )
+
+                        MainDestination.SETTINGS -> SettingsScreen(
+                            darkTheme = darkTheme,
+                            navBarStyle = navBarStyle,
+                            showLibraryHero = showLibraryHero,
+                            enableGeneralAudioMode = enableGeneralAudioMode,
+                            hapticProfile = hapticProfile,
+                            scanFilter = scanFilter,
+                            lyricSettings = lyricSettings,
+                            aiConfig = aiConfig,
+                            onSetDarkTheme = viewModel::setDarkTheme,
+                            onSetNavBarStyle = viewModel::setNavBarStyle,
+                            onSetShowLibraryHero = viewModel::setShowLibraryHero,
+                            onSetEnableGeneralAudioMode = viewModel::setEnableGeneralAudioMode,
+                            onSetHapticProfile = viewModel::setHapticProfile,
+                            onUpdateScanFilter = viewModel::updateScanFilter,
+                            onUpdateLyricSettings = viewModel::updateLyricSettings,
+                            onTriggerRescan = ::requestSmartScanDialog,
+                            onImportAudioFiles = { audioPickerLauncher.launch(arrayOf("audio/*")) },
+                            onImportFolder = { folderPickerLauncher.launch(null) },
+                            duplicateGroupCount = duplicateGroups.size,
+                            onOpenDuplicateManager = { showDuplicateManager = true },
+                            onOpenEqualizer = { showEqualizer = true },
+                            onOpenAiStudio = ::openAiWorkspace,
+                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                        )
+                    }
+
+                    // Tablet / Expanded bottom-docked floating MiniPlayerBar
+                    if (useNavigationRail && showMiniBarInTab && currentTrack != null) {
+                        val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
+                        MiniPlayerBar(
+                            track = currentTrack,
+                            previousTrack = playbackState.previousTrack,
+                            nextTrack = playbackState.nextTrack,
+                            isPlaying = playbackState.isPlaying,
+                            progressFraction = playbackState.positionMs.toFloat() / dur.toFloat(),
+                            auraPalette = auraPalette,
+                            darkTheme = darkTheme,
+                            artworkAlpha = miniArtAlpha,
+                            onArtworkBoundsChanged = { rect ->
+                                if (playerExpansion.value < 0.04f) {
+                                    miniArtworkRect = rect
+                                }
+                            },
+                            onExpand = {
+                                viewModel.haptics.springImpact()
+                                expandNowPlaying()
+                            },
+                            onDragExpandStart = handleMiniDragStart,
+                            onDragExpandDelta = handleMiniDragDelta,
+                            onDragExpandEnd = handleMiniDragEnd,
+                            onTogglePlayPause = { viewModel.togglePlayPause() },
+                            onSkipNext = { viewModel.skipNext() },
+                            onSkipPrevious = { viewModel.skipPrevious() },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
+                                .padding(horizontal = 24.dp, vertical = 12.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Continuous Interruptible Follow-Finger Full-Screen Now Playing Sheet
+        if (playerExpansion.value > 0.002f && currentTrack != null) {
+            val offsetYPx = ((1f - expansion) * containerHeightPx).roundToInt()
+            val sheetCornerDp = lerp(30.dp, 0.dp, expansion)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(0, offsetYPx) }
+                    .clip(RoundedCornerShape(topStart = sheetCornerDp, topEnd = sheetCornerDp))
+            ) {
+                NowPlayingSheet(
+                    playbackState = playbackState,
+                    auraPalette = auraPalette,
+                    lyricDocument = currentLyric,
+                    lyricSettings = lyricSettings,
+                    eqEnabled = eqState.enabled,
+                    darkTheme = darkTheme,
+                    artworkAlpha = fullArtAlpha,
+                    onActiveArtworkBoundsChanged = { rect, cornerDp ->
+                        // Undo live vertical sheet translation so target rect stays pinned at expansion=1f
+                        val currentOffsetY = (1f - playerExpansion.value.coerceIn(0f, 1f)) * containerHeightPx
+                        activeSheetArtworkRect = rect.translate(0f, -currentOffsetY)
+                        activeSheetArtworkCornerDp = cornerDp
+                    },
+                    onStageChanged = { stage -> activeNowPlayingStage = stage },
+                    onDragCollapseStart = handleSheetDragStart,
+                    onDragCollapseDelta = handleSheetDragDelta,
+                    onDragCollapseEnd = handleSheetDragEnd,
+                    onDismiss = {
+                        viewModel.haptics.tickLight()
+                        collapseNowPlaying()
+                    },
+                    onTogglePlayPause = viewModel::togglePlayPause,
+                    onSkipNext = viewModel::skipNext,
+                    onSkipPrevious = viewModel::skipPrevious,
+                    onSeekTo = viewModel::seekTo,
+                    onToggleFavorite = viewModel::toggleFavorite,
+                    onToggleShuffle = {
+                        viewModel.haptics.tickLight()
+                        viewModel.playbackController.toggleShuffle()
+                    },
+                    onCycleRepeat = {
+                        viewModel.haptics.tickLight()
+                        viewModel.playbackController.cycleRepeatMode()
+                    },
+                    onSetSpeed = {
+                        viewModel.haptics.tickLight()
+                        viewModel.playbackController.setPlaybackSpeed(it)
+                    },
+                    onToggleAbLoop = {
+                        viewModel.haptics.springImpact()
+                        viewModel.playbackController.toggleAbLoopPoint()
+                    },
+                    onStartSleepTimer = { mins ->
+                        viewModel.haptics.tickLight()
+                        viewModel.playbackController.startSleepTimer(mins)
+                        viewModel.showBanner(if (mins > 0) "睡眠定时已设定：$mins 分钟后柔和淡出" else "已关闭睡眠定时")
+                    },
+                    onJumpQueueIndex = { idx ->
+                        viewModel.haptics.springImpact()
+                        viewModel.playbackController.jumpToQueueIndex(idx)
+                    },
+                    onRemoveQueueIndex = viewModel::removeQueueIndex,
+                    onMoveQueueIndexToNext = viewModel::moveQueueIndexToNext,
+                    onClearUpcomingQueue = viewModel::clearUpcomingQueue,
+                    onSaveQueueAsPlaylist = viewModel::saveQueueAsPlaylist,
+                    onToggleSimulatedWordByWord = { enabled ->
+                        viewModel.updateLyricSettings(lyricSettings.copy(enableSimulatedWordByWord = enabled))
+                    },
+                    onUpdateLyricSettings = viewModel::updateLyricSettings,
+                    onOpenLyricManager = { showLyricsManager = true },
+                    onQuickOnlineLyricMatch = { track ->
+                        showLyricsManager = true
+                        viewModel.smartMatchLyricsOnline(track)
+                    },
+                    onOpenEqualizer = { showEqualizer = true },
+                    onOpenAiStudio = ::openAiWorkspace,
+                    onScrubHaptic = { viewModel.haptics.tickLight() }
+                )
+            }
+        }
+
+        // Continuous Shared-Bounds Cover Art Morph Overlay (MiniPlayer <-> Full Cover OR Lyrics/Queue Compact Cover)
+        if (isMorphingArt && currentTrack != null) {
+            MorphingFloatingArtwork(
+                track = currentTrack,
+                auraPalette = auraPalette,
+                expansionProgress = expansion,
+                miniRect = miniArtworkRect,
+                fullRect = effectiveTargetArtworkRect,
+                startCornerDp = 11.dp,
+                endCornerDp = activeSheetArtworkCornerDp
+            )
+        }
+
+        // Studio Equalizer Modal
+        AnimatedVisibility(
+            visible = showEqualizer,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            EqualizerSheet(
+                eqState = eqState,
+                customPresets = customEqPresets,
+                onUpdateEq = viewModel::updateEqState,
+                onApplyPreset = viewModel::applyEqPreset,
+                onSaveCustomPreset = viewModel::saveCustomEqPreset,
+                onDeleteCustomPreset = viewModel::deleteCustomEqPreset,
+                onTickHaptic = { viewModel.haptics.tickLight() },
+                onDismiss = { showEqualizer = false }
+            )
+        }
+
+        // Lyrics Manager Modal (Font Weight / Multi-Source Online Match / Upload / Offset Calibration)
+        AnimatedVisibility(
+            visible = showLyricsManager && currentTrack != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            currentTrack?.let { active ->
+                LyricsManagerSheet(
+                    track = active,
+                    currentLyric = currentLyric,
+                    lyricSettings = lyricSettings,
+                    onlineSearchState = onlineLyricSearch,
+                    onSearchOnline = { title, artist, source ->
+                        viewModel.smartMatchLyricsOnline(active, title, artist, source)
+                    },
+                    onSelectOnlineCandidate = { cand ->
+                        viewModel.applyOnlineLyricCandidate(active, cand)
+                        showLyricsManager = false
+                    },
+                    onImportLyricFile = {
+                        lyricPickerLauncher.launch(arrayOf("*/*"))
+                    },
+                    onSavePastedLyrics = { raw ->
+                        viewModel.saveCustomLyrics(active, raw, sourceLabel = "手动粘贴编辑")
+                    },
+                    onAdjustOffset = viewModel::adjustLyricOffset,
+                    onUpdateLyricSettings = viewModel::updateLyricSettings,
+                    onDismiss = { showLyricsManager = false }
+                )
+            }
+        }
+
+        // Smart Duplicate Detection & Conflict Resolution Modal
+        AnimatedVisibility(
+            visible = showDuplicateManager,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            DuplicateManagerSheet(
+                duplicateGroups = duplicateGroups,
+                onPlayPreviewTrack = { track, groupTracks ->
+                    viewModel.playTrack(track, groupTracks)
+                },
+                onResolveGroupKeepOnly = viewModel::resolveDuplicateGroupKeepOnly,
+                onResolveGroupDemoteOthers = viewModel::resolveDuplicateGroupDemoteOthers,
+                onResolveAllKeepHighestQuality = viewModel::resolveAllDuplicatesKeepHighestQuality,
+                onResolveAllDemoteLowerToGeneral = viewModel::resolveAllDuplicatesDemoteLowerToGeneral,
+                onResolveExactQualityOnly = viewModel::resolveExactQualityDuplicatesOnly,
+                onDismiss = { showDuplicateManager = false }
+            )
+        }
+
+        // Import-time Quality Conflict Decision Dialog
+        if (pendingImportConflicts.isNotEmpty()) {
+            ImportConflictDialog(
+                sourceLabel = pendingImportSourceLabel,
+                conflicts = pendingImportConflicts,
+                onConfirmDecisions = viewModel::resolveImportConflicts,
+                onDismissSkipAll = viewModel::dismissImportConflicts
+            )
+        }
+
+        // Pre-Scan Confirmation & Strict Metadata Filter Dialog
+        if (showSmartScanDialog) {
+            SmartScanConfirmDialog(
+                initialConfig = scanFilter,
+                onConfirmScan = { confirmedConfig ->
+                    showSmartScanDialog = false
+                    executeSmartScanWithConfig(confirmedConfig)
+                },
+                onDismiss = { showSmartScanDialog = false }
+            )
+        }
+    }
+}

@@ -1,0 +1,44 @@
+<resources>
+    <string name="app_name">Auralis</string>
+    <string name="nav_listen">聆听</string>
+    <string name="nav_library">曲库</string>
+    <string name="nav_playlists">歌单</string>
+    <string name="nav_ai_studio">AI 对话</string>
+    <string name="nav_settings">工坊</string>
+
+    <string name="action_scan_library">智能扫描</string>
+    <string name="action_import_audio">导入音频</string>
+    <string name="action_import_folder">导入文件夹</string>
+    <string name="action_import_lyrics">导入歌词</string>
+    <string name="action_match_lyrics">智能匹配</string>
+    <string name="action_play_all">播放全部</string>
+    <string name="action_shuffle_all">随机漫游</string>
+
+    <string name="cd_play_pause">播放或暂停</string>
+    <string name="cd_previous_track">上一首</string>
+    <string name="cd_next_track">下一首</string>
+    <string name="cd_album_art">专辑封面</string>
+    <string name="cd_toggle_lyrics">切换逐字歌词</string>
+    <string name="cd_toggle_queue">播放队列</string>
+    <string name="cd_open_equalizer">声学均衡器</string>
+    <string name="cd_open_ai_studio">AI 音乐工坊</string>
+    <string name="cd_favorite">收藏歌曲</string>
+    <string name="cd_close_player">收起播放页</string>
+    <string name="cd_shuffle">随机播放</string>
+    <string name="cd_repeat">循环模式</string>
+    <string name="cd_sleep_timer">睡眠定时</string>
+    <string name="cd_more_options">更多选项</string>
+
+    <string name="empty_library_title">静待第一缕声波</string>
+    <string name="empty_library_subtitle">授权智能扫描本地无损音乐，或通过系统文件选择器导入单曲与文件夹。</string>
+    <string name="permission_audio_rationale">需要访问设备音频文件以构建高保真本地曲库与解析内嵌元数据。</string>
+    <string name="notification_channel_playback">音乐播放控制</string>
+    <string name="cd_batch_manage">批量管理列表</string>
+    <string name="cd_remove_from_queue">从队列移出</string>
+    <string name="cd_move_to_next">移至下一首播放</string>
+    <string name="cd_ai_new_session">新建独立对话窗口</string>
+    <string name="cd_ai_sessions">切换对话窗口</string>
+    <string name="cd_ai_config">AI 模型与接口配置</string>
+    <string name="cd_ai_send">发送消息</string>
+    <string name="cd_ai_stop">停止生成</string>
+</resources>
