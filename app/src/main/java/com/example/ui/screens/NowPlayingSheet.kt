@@ -55,16 +55,24 @@ import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Bookmark
+import androidx.compose.material.icons.rounded.BookmarkAdd
+import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Equalizer
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.FullscreenExit
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
@@ -117,6 +125,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
 import com.example.R
+import com.example.model.AudioBookmark
 import com.example.model.AuraPalette
 import com.example.model.LyricDocument
 import com.example.model.LyricSettings
@@ -124,6 +133,7 @@ import com.example.model.RepeatMode
 import com.example.model.Track
 import com.example.model.formatDuration
 import com.example.playback.PlaybackState
+import com.example.ui.components.AudioTrackInfoDialog
 import com.example.ui.components.HeartBurstIconButton
 import com.example.ui.components.LiveEqualizerBars
 import com.example.ui.components.LyricStageView
@@ -148,12 +158,70 @@ private enum class CoverDragAxis {
     VERTICAL
 }
 
+/**
+ * Pure gesture-settlement heuristic for collapsing the full-screen NowPlayingSheet.
+ * Uses true screen-space release velocity + cumulative downward drag so both crisp short flicks
+ * and fast long swipes reliably dismiss the sheet without snapping back.
+ */
+fun shouldCollapseNowPlayingSheet(
+    expansion: Float,
+    velocityYPxPerSec: Float,
+    totalDragDownPx: Float,
+    containerHeightPx: Float
+): Boolean {
+    val safeHeight = containerHeightPx.coerceAtLeast(1f)
+    val draggedFraction = (totalDragDownPx / safeHeight).coerceAtLeast(1f - expansion)
+    // Crisp or fast downward flick collapses immediately even over short travel
+    if (velocityYPxPerSec >= 220f && totalDragDownPx >= 14f) return true
+    // Explicit fast upward reversal cancels collapse and keeps the sheet open
+    if (velocityYPxPerSec <= -480f) return false
+    // Moderate downward drag distance collapses smoothly without requiring high speed
+    if (draggedFraction >= 0.10f || totalDragDownPx >= 68f) return true
+    return false
+}
+
+/**
+ * Combines VelocityTracker output with a short 110ms screen-space sample window so
+ * release-frame touch jitter on high-refresh displays never zeroes out a fast downward flick.
+ */
+private fun resolveScreenSpaceVerticalVelocity(
+    trackerVelY: Float,
+    recentSamples: ArrayDeque<Pair<Long, Float>>
+): Float {
+    val windowVelY = if (recentSamples.size >= 2) {
+        val first = recentSamples.first()
+        val last = recentSamples.last()
+        val dtMs = (last.first - first.first).coerceAtLeast(1L)
+        ((last.second - first.second) * 1000f) / dtMs.toFloat()
+    } else {
+        0f
+    }
+    return when {
+        trackerVelY >= 0f && windowVelY >= 0f -> maxOf(trackerVelY, windowVelY)
+        trackerVelY <= 0f && windowVelY <= 0f -> minOf(trackerVelY, windowVelY)
+        abs(trackerVelY) < 90f && abs(windowVelY) > 160f -> windowVelY
+        else -> trackerVelY
+    }
+}
+
+private fun recordVerticalSample(
+    samples: ArrayDeque<Pair<Long, Float>>,
+    uptimeMs: Long,
+    accumY: Float
+) {
+    samples.addLast(uptimeMs to accumY)
+    while (samples.size > 2 && uptimeMs - samples.first().first > 110L) {
+        samples.removeFirst()
+    }
+}
+
 @Composable
 fun NowPlayingSheet(
     playbackState: PlaybackState,
     auraPalette: AuraPalette,
     lyricDocument: LyricDocument,
     lyricSettings: LyricSettings,
+    audioBookmarks: List<AudioBookmark> = emptyList(),
     eqEnabled: Boolean,
     darkTheme: Boolean = true,
     visualEffectsEnhanced: Boolean = false,
@@ -162,12 +230,17 @@ fun NowPlayingSheet(
     onStageChanged: (NowPlayingStage) -> Unit = {},
     onDragCollapseStart: () -> Unit = {},
     onDragCollapseDelta: (Float) -> Unit = {},
-    onDragCollapseEnd: (Float) -> Unit = {},
+    onDragCollapseEnd: (velocityY: Float, totalDragDownPx: Float) -> Unit = { _, _ -> },
     onDismiss: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSkipNext: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSeekTo: (Long) -> Unit,
+    onSeekRelative: (Long) -> Unit = {},
+    onAddAudioBookmark: (Long, String) -> Unit = { _, _ -> },
+    onRemoveAudioBookmark: (String) -> Unit = {},
+    onPromoteGeneralAudioToMusic: (Track) -> Unit = {},
+    onShareTrack: (Track) -> Unit = {},
     onToggleFavorite: (Track) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
@@ -188,9 +261,12 @@ fun NowPlayingSheet(
     onScrubHaptic: () -> Unit
 ) {
     val track = playbackState.currentTrack ?: return
+    val isGeneralAudio = track.isGeneralAudio
     var stage by remember { mutableStateOf(NowPlayingStage.COVER) }
     var showSpeedMenu by remember { mutableStateOf(false) }
     var showSleepMenu by remember { mutableStateOf(false) }
+    var showBookmarksDialog by remember { mutableStateOf(false) }
+    var showTrackInfoDialog by remember { mutableStateOf(false) }
     var lastSkipDirection by remember { mutableIntStateOf(1) }
 
     val skipPrevKick = remember { Animatable(0f) }
@@ -203,6 +279,12 @@ fun NowPlayingSheet(
     var sheetRootOffset by remember { mutableStateOf(Offset.Zero) }
     var coverArtRectRoot by remember { mutableStateOf(Rect.Zero) }
     var headerMiniArtRectRoot by remember { mutableStateOf(Rect.Zero) }
+
+    LaunchedEffect(track.id, isGeneralAudio) {
+        if (isGeneralAudio && stage == NowPlayingStage.LYRICS) {
+            stage = NowPlayingStage.COVER
+        }
+    }
 
     LaunchedEffect(stage) {
         onStageChanged(stage)
@@ -241,7 +323,8 @@ fun NowPlayingSheet(
         }
     }
 
-    val isImmersiveLyrics = stage == NowPlayingStage.LYRICS &&
+    val isImmersiveLyrics = !isGeneralAudio &&
+        stage == NowPlayingStage.LYRICS &&
         lyricSettings.enableImmersiveLyrics &&
         !lyricDocument.isEmpty
 
@@ -309,23 +392,32 @@ fun NowPlayingSheet(
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 val tracker = VelocityTracker()
-                                tracker.addPosition(down.uptimeMillis, down.position)
+                                val recentSamples = ArrayDeque<Pair<Long, Float>>()
+                                tracker.addPosition(down.uptimeMillis, Offset.Zero)
+                                recordVerticalSample(recentSamples, down.uptimeMillis, 0f)
                                 var dragging = false
+                                var accumX = 0f
                                 var accumY = 0f
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                     if (!change.pressed) {
                                         if (dragging) {
-                                            onDragCollapseEnd(tracker.calculateVelocity().y)
+                                            val velY = resolveScreenSpaceVerticalVelocity(
+                                                trackerVelY = tracker.calculateVelocity().y,
+                                                recentSamples = recentSamples
+                                            )
+                                            onDragCollapseEnd(velY, accumY.coerceAtLeast(0f))
                                         }
                                         break
                                     }
                                     val d = change.positionChange()
-                                    if (d.y != 0f) {
-                                        tracker.addPosition(change.uptimeMillis, change.position)
+                                    if (d.x != 0f || d.y != 0f) {
+                                        accumX += d.x
                                         accumY += d.y
-                                        if (!dragging && abs(accumY) > 10f) {
+                                        tracker.addPosition(change.uptimeMillis, Offset(accumX, accumY))
+                                        recordVerticalSample(recentSamples, change.uptimeMillis, accumY)
+                                        if (!dragging && abs(accumY) > 10f && abs(accumY) >= abs(accumX)) {
                                             dragging = true
                                             onDragCollapseStart()
                                         }
@@ -415,7 +507,11 @@ fun NowPlayingSheet(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = track.artist,
+                                        text = if (isGeneralAudio) {
+                                            "普通音频 · ${track.folderPath.ifBlank { track.codecLabel }}"
+                                        } else {
+                                            track.artist
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = subInk,
                                         maxLines = 1,
@@ -424,7 +520,7 @@ fun NowPlayingSheet(
                                 }
                             }
 
-                            // Cover stage centered album/spec header
+                            // Cover stage centered album/folder + spec header
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
@@ -432,7 +528,11 @@ fun NowPlayingSheet(
                                     .graphicsLayer { alpha = (1f - morphT * 1.4f).coerceIn(0f, 1f) }
                             ) {
                                 Text(
-                                    text = track.album.ifBlank { "正在播放" },
+                                    text = if (isGeneralAudio) {
+                                        "普通音频 · ${track.folderPath.ifBlank { "本地音频" }}"
+                                    } else {
+                                        track.album.ifBlank { "正在播放" }
+                                    },
                                     style = MaterialTheme.typography.labelLarge,
                                     color = ink.copy(alpha = 0.88f),
                                     maxLines = 1,
@@ -447,22 +547,41 @@ fun NowPlayingSheet(
                             }
                         }
 
-                        // AI Studio quick button in top right
-                        Box(
-                            modifier = Modifier
-                                .size(44.dp)
-                                .clip(CircleShape)
-                                .background(pillBg)
-                                .bouncyClickable(onClick = onOpenAiStudio)
-                                .testTag("now_playing_ai_button"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.AutoAwesome,
-                                contentDescription = stringResource(R.string.cd_open_ai_studio),
-                                tint = accentGold,
-                                modifier = Modifier.size(20.dp)
-                            )
+                        // Top-right button: AI Studio for Music, File Info Inspector for General Audio
+                        if (isGeneralAudio) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(pillBg)
+                                    .bouncyClickable { showTrackInfoDialog = true }
+                                    .testTag("now_playing_audio_info_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Info,
+                                    contentDescription = "查看音频文件信息",
+                                    tint = ink.copy(alpha = 0.88f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(pillBg)
+                                    .bouncyClickable(onClick = onOpenAiStudio)
+                                    .testTag("now_playing_ai_button"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoAwesome,
+                                    contentDescription = stringResource(R.string.cd_open_ai_studio),
+                                    tint = accentGold,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -485,6 +604,7 @@ fun NowPlayingSheet(
                         isPlaying = playbackState.isPlaying,
                         auraPalette = auraPalette,
                         lyricDocument = lyricDocument,
+                        bookmarkCount = audioBookmarks.size,
                         positionMs = playbackState.positionMs,
                         darkTheme = darkTheme,
                         visualEffectsEnhanced = visualEffectsEnhanced,
@@ -504,7 +624,13 @@ fun NowPlayingSheet(
                             lastSkipDirection = -1
                             onSkipPrevious()
                         },
-                        onTapLyricsPreview = { stage = NowPlayingStage.LYRICS }
+                        onTapLyricsPreview = {
+                            if (isGeneralAudio) {
+                                showBookmarksDialog = true
+                            } else {
+                                stage = NowPlayingStage.LYRICS
+                            }
+                        }
                     )
 
                     NowPlayingStage.LYRICS -> LyricStageView(
@@ -524,6 +650,7 @@ fun NowPlayingSheet(
                         queue = playbackState.queue,
                         currentIndex = playbackState.currentIndex,
                         isPlaying = playbackState.isPlaying,
+                        isGeneralAudioMode = isGeneralAudio || playbackState.queue.all { it.isGeneralAudio },
                         darkTheme = darkTheme,
                         onSelectIndex = onJumpQueueIndex,
                         onRemoveIndex = onRemoveQueueIndex,
@@ -534,13 +661,57 @@ fun NowPlayingSheet(
                 }
             }
 
-            // Track Info + Favorite + Quick Studio Pills (smoothly collapses during Lyrics/Queue)
+            // Track Info + Favorite/Share + Quick Studio Pills (also supports vertical swipe-down collapse!)
             AnimatedVisibility(
                 visible = stage == NowPlayingStage.COVER,
                 enter = expandVertically(tween(240)) + fadeIn(tween(220)),
                 exit = shrinkVertically(tween(200)) + fadeOut(tween(160))
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val tracker = VelocityTracker()
+                                val recentSamples = ArrayDeque<Pair<Long, Float>>()
+                                tracker.addPosition(down.uptimeMillis, Offset.Zero)
+                                recordVerticalSample(recentSamples, down.uptimeMillis, 0f)
+                                var dragging = false
+                                var accumX = 0f
+                                var accumY = 0f
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) {
+                                        if (dragging) {
+                                            val velY = resolveScreenSpaceVerticalVelocity(
+                                                trackerVelY = tracker.calculateVelocity().y,
+                                                recentSamples = recentSamples
+                                            )
+                                            onDragCollapseEnd(velY, accumY.coerceAtLeast(0f))
+                                        }
+                                        break
+                                    }
+                                    val d = change.positionChange()
+                                    if (d.x != 0f || d.y != 0f) {
+                                        accumX += d.x
+                                        accumY += d.y
+                                        tracker.addPosition(change.uptimeMillis, Offset(accumX, accumY))
+                                        recordVerticalSample(recentSamples, change.uptimeMillis, accumY)
+                                        if (!dragging && accumY > 14f && abs(accumY) > abs(accumX) * 1.15f) {
+                                            dragging = true
+                                            onDragCollapseStart()
+                                        }
+                                        if (dragging) {
+                                            change.consume()
+                                            onDragCollapseDelta(d.y)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -567,7 +738,11 @@ fun NowPlayingSheet(
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = t.artist,
+                                    text = if (t.isGeneralAudio) {
+                                        "${t.folderPath.ifBlank { "本地音频" }} · ${t.fileName.ifBlank { t.codecLabel }}"
+                                    } else {
+                                        t.artist
+                                    },
                                     style = MaterialTheme.typography.titleMedium,
                                     color = subInk,
                                     maxLines = 1,
@@ -575,16 +750,30 @@ fun NowPlayingSheet(
                                 )
                             }
                         }
-                        HeartBurstIconButton(
-                            isFavorite = track.isFavorite,
-                            contentDescription = stringResource(R.string.cd_favorite),
-                            inactiveTint = ink.copy(alpha = 0.78f),
-                            onClick = { onToggleFavorite(track) },
-                            modifier = Modifier.testTag("now_playing_favorite")
-                        )
+                        if (isGeneralAudio) {
+                            IconButton(
+                                onClick = { onShareTrack(track) },
+                                modifier = Modifier.testTag("now_playing_share_audio")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Share,
+                                    contentDescription = "分享音频文件",
+                                    tint = ink.copy(alpha = 0.84f),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        } else {
+                            HeartBurstIconButton(
+                                isFavorite = track.isFavorite,
+                                contentDescription = stringResource(R.string.cd_favorite),
+                                inactiveTint = ink.copy(alpha = 0.78f),
+                                onClick = { onToggleFavorite(track) },
+                                modifier = Modifier.testTag("now_playing_favorite")
+                            )
+                        }
                     }
 
-                    // Pro Audiophile Utility Pills: Speed, A-B Loop, Sleep Timer, Quality Badge
+                    // Pro Audiophile / Spoken-Audio Utility Pills: Quality, Speed (extended to 3.0x for General Audio), A-B Loop, Sleep Timer
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -609,9 +798,14 @@ fun NowPlayingSheet(
                                 expanded = showSpeedMenu,
                                 onDismissRequest = { showSpeedMenu = false }
                             ) {
-                                listOf(0.75f, 0.9f, 1.0f, 1.15f, 1.25f, 1.5f, 2.0f).forEach { spd ->
+                                val speedOptions = if (isGeneralAudio) {
+                                    listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.5f, 3.0f)
+                                } else {
+                                    listOf(0.75f, 0.9f, 1.0f, 1.15f, 1.25f, 1.5f, 2.0f)
+                                }
+                                speedOptions.forEach { spd ->
                                     DropdownMenuItem(
-                                        text = { Text("${spd}x 速率") },
+                                        text = { Text("${spd}x 倍速") },
                                         onClick = {
                                             onSetSpeed(spd)
                                             showSpeedMenu = false
@@ -691,48 +885,104 @@ fun NowPlayingSheet(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .bouncyClickable(onClick = onToggleShuffle)
-                                .testTag("transport_shuffle"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Shuffle,
-                                contentDescription = stringResource(R.string.cd_shuffle),
-                                tint = if (playbackState.shuffleEnabled) ink else mutedInk,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(54.dp)
-                                .clip(CircleShape)
-                                .bouncyClickable(pressedScale = 0.86f) {
-                                    lastSkipDirection = -1
-                                    onSkipPrevious()
-                                    scope.launch {
-                                        skipPrevKick.snapTo(-10f)
-                                        skipPrevKick.animateTo(
-                                            0f,
-                                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
-                                        )
-                                    }
-                                }
-                                .testTag("transport_previous"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.SkipPrevious,
-                                contentDescription = stringResource(R.string.cd_previous_track),
-                                tint = ink,
+                        if (isGeneralAudio) {
+                            // General Audio Transport: [Prev] [-15s] [Play/Pause] [+15s] [Next]
+                            Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .offset { IntOffset(skipPrevKick.value.roundToInt(), 0) }
-                            )
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        lastSkipDirection = -1
+                                        onSkipPrevious()
+                                    }
+                                    .testTag("transport_previous"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipPrevious,
+                                    contentDescription = "上一条音频",
+                                    tint = ink.copy(alpha = 0.82f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        onSeekRelative(-15_000L)
+                                        scope.launch {
+                                            skipPrevKick.snapTo(-8f)
+                                            skipPrevKick.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                            )
+                                        }
+                                    }
+                                    .testTag("transport_rewind_15s"),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.FastRewind,
+                                    contentDescription = "快退 15 秒",
+                                    tint = ink,
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .offset { IntOffset(skipPrevKick.value.roundToInt(), 0) }
+                                )
+                                Text(
+                                    text = "-15s",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = subInk,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(onClick = onToggleShuffle)
+                                    .testTag("transport_shuffle"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Shuffle,
+                                    contentDescription = stringResource(R.string.cd_shuffle),
+                                    tint = if (playbackState.shuffleEnabled) ink else mutedInk,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        lastSkipDirection = -1
+                                        onSkipPrevious()
+                                        scope.launch {
+                                            skipPrevKick.snapTo(-10f)
+                                            skipPrevKick.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                            )
+                                        }
+                                    }
+                                    .testTag("transport_previous"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipPrevious,
+                                    contentDescription = stringResource(R.string.cd_previous_track),
+                                    tint = ink,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .offset { IntOffset(skipPrevKick.value.roundToInt(), 0) }
+                                )
+                            }
                         }
 
                         val playButtonScale by animateFloatAsState(
@@ -768,57 +1018,112 @@ fun NowPlayingSheet(
                             }
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .size(54.dp)
-                                .clip(CircleShape)
-                                .bouncyClickable(pressedScale = 0.86f) {
-                                    lastSkipDirection = 1
-                                    onSkipNext()
-                                    scope.launch {
-                                        skipNextKick.snapTo(10f)
-                                        skipNextKick.animateTo(
-                                            0f,
-                                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
-                                        )
-                                    }
-                                }
-                                .testTag("transport_next"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.SkipNext,
-                                contentDescription = stringResource(R.string.cd_next_track),
-                                tint = ink,
+                        if (isGeneralAudio) {
+                            Column(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .offset { IntOffset(skipNextKick.value.roundToInt(), 0) }
-                            )
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .bouncyClickable(onClick = onCycleRepeat)
-                                .testTag("transport_repeat"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            val icon = if (playbackState.repeatMode == RepeatMode.ONE) {
-                                Icons.Rounded.RepeatOne
-                            } else {
-                                Icons.Rounded.Repeat
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        onSeekRelative(15_000L)
+                                        scope.launch {
+                                            skipNextKick.snapTo(8f)
+                                            skipNextKick.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                            )
+                                        }
+                                    }
+                                    .testTag("transport_forward_15s"),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.FastForward,
+                                    contentDescription = "快进 15 秒",
+                                    tint = ink,
+                                    modifier = Modifier
+                                        .size(26.dp)
+                                        .offset { IntOffset(skipNextKick.value.roundToInt(), 0) }
+                                )
+                                Text(
+                                    text = "+15s",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = subInk,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             }
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = stringResource(R.string.cd_repeat),
-                                tint = if (playbackState.repeatMode != RepeatMode.OFF) ink else mutedInk,
-                                modifier = Modifier.size(22.dp)
-                            )
+
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        lastSkipDirection = 1
+                                        onSkipNext()
+                                    }
+                                    .testTag("transport_next"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipNext,
+                                    contentDescription = "下一条音频",
+                                    tint = ink.copy(alpha = 0.82f),
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(54.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(pressedScale = 0.86f) {
+                                        lastSkipDirection = 1
+                                        onSkipNext()
+                                        scope.launch {
+                                            skipNextKick.snapTo(10f)
+                                            skipNextKick.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+                                            )
+                                        }
+                                    }
+                                    .testTag("transport_next"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.SkipNext,
+                                    contentDescription = stringResource(R.string.cd_next_track),
+                                    tint = ink,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .offset { IntOffset(skipNextKick.value.roundToInt(), 0) }
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .bouncyClickable(onClick = onCycleRepeat)
+                                    .testTag("transport_repeat"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val icon = if (playbackState.repeatMode == RepeatMode.ONE) {
+                                    Icons.Rounded.RepeatOne
+                                } else {
+                                    Icons.Rounded.Repeat
+                                }
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = stringResource(R.string.cd_repeat),
+                                    tint = if (playbackState.repeatMode != RepeatMode.OFF) ink else mutedInk,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
 
-                    // Bottom Apple Music-style Utility Action Deck
+                    // Bottom Utility Action Deck (tailored separately for Music vs General Audio)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -826,43 +1131,86 @@ fun NowPlayingSheet(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        DeckToggleIcon(
-                            icon = Icons.Rounded.Lyrics,
-                            contentDescription = stringResource(R.string.cd_toggle_lyrics),
-                            selected = stage == NowPlayingStage.LYRICS,
-                            darkTheme = darkTheme,
-                            onClick = {
-                                stage = if (stage == NowPlayingStage.LYRICS) NowPlayingStage.COVER else NowPlayingStage.LYRICS
-                            },
-                            testTag = "deck_lyrics_toggle"
-                        )
-                        DeckToggleIcon(
-                            icon = Icons.Rounded.Equalizer,
-                            contentDescription = stringResource(R.string.cd_open_equalizer),
-                            selected = eqEnabled,
-                            darkTheme = darkTheme,
-                            onClick = onOpenEqualizer,
-                            testTag = "deck_eq_button"
-                        )
-                        DeckToggleIcon(
-                            icon = Icons.Rounded.AutoAwesome,
-                            contentDescription = stringResource(R.string.cd_open_ai_studio),
-                            selected = false,
-                            darkTheme = darkTheme,
-                            tintOverride = accentGold,
-                            onClick = onOpenAiStudio,
-                            testTag = "deck_ai_button"
-                        )
-                        DeckToggleIcon(
-                            icon = Icons.AutoMirrored.Rounded.QueueMusic,
-                            contentDescription = stringResource(R.string.cd_toggle_queue),
-                            selected = stage == NowPlayingStage.QUEUE,
-                            darkTheme = darkTheme,
-                            onClick = {
-                                stage = if (stage == NowPlayingStage.QUEUE) NowPlayingStage.COVER else NowPlayingStage.QUEUE
-                            },
-                            testTag = "deck_queue_toggle"
-                        )
+                        if (isGeneralAudio) {
+                            val repeatIcon = if (playbackState.repeatMode == RepeatMode.ONE) {
+                                Icons.Rounded.RepeatOne
+                            } else {
+                                Icons.Rounded.Repeat
+                            }
+                            DeckToggleIcon(
+                                icon = repeatIcon,
+                                contentDescription = stringResource(R.string.cd_repeat),
+                                selected = playbackState.repeatMode != RepeatMode.OFF,
+                                darkTheme = darkTheme,
+                                onClick = onCycleRepeat,
+                                testTag = "deck_repeat_toggle"
+                            )
+                            DeckToggleIcon(
+                                icon = Icons.Rounded.Equalizer,
+                                contentDescription = stringResource(R.string.cd_open_equalizer),
+                                selected = eqEnabled,
+                                darkTheme = darkTheme,
+                                onClick = onOpenEqualizer,
+                                testTag = "deck_eq_button"
+                            )
+                            DeckToggleIcon(
+                                icon = if (audioBookmarks.isNotEmpty()) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                contentDescription = "时间书签",
+                                selected = audioBookmarks.isNotEmpty(),
+                                darkTheme = darkTheme,
+                                tintOverride = if (audioBookmarks.isNotEmpty()) accentGold else null,
+                                onClick = { showBookmarksDialog = true },
+                                testTag = "deck_bookmarks_button"
+                            )
+                            DeckToggleIcon(
+                                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = stringResource(R.string.cd_toggle_queue),
+                                selected = stage == NowPlayingStage.QUEUE,
+                                darkTheme = darkTheme,
+                                onClick = {
+                                    stage = if (stage == NowPlayingStage.QUEUE) NowPlayingStage.COVER else NowPlayingStage.QUEUE
+                                },
+                                testTag = "deck_queue_toggle"
+                            )
+                        } else {
+                            DeckToggleIcon(
+                                icon = Icons.Rounded.Lyrics,
+                                contentDescription = stringResource(R.string.cd_toggle_lyrics),
+                                selected = stage == NowPlayingStage.LYRICS,
+                                darkTheme = darkTheme,
+                                onClick = {
+                                    stage = if (stage == NowPlayingStage.LYRICS) NowPlayingStage.COVER else NowPlayingStage.LYRICS
+                                },
+                                testTag = "deck_lyrics_toggle"
+                            )
+                            DeckToggleIcon(
+                                icon = Icons.Rounded.Equalizer,
+                                contentDescription = stringResource(R.string.cd_open_equalizer),
+                                selected = eqEnabled,
+                                darkTheme = darkTheme,
+                                onClick = onOpenEqualizer,
+                                testTag = "deck_eq_button"
+                            )
+                            DeckToggleIcon(
+                                icon = Icons.Rounded.AutoAwesome,
+                                contentDescription = stringResource(R.string.cd_open_ai_studio),
+                                selected = false,
+                                darkTheme = darkTheme,
+                                tintOverride = accentGold,
+                                onClick = onOpenAiStudio,
+                                testTag = "deck_ai_button"
+                            )
+                            DeckToggleIcon(
+                                icon = Icons.AutoMirrored.Rounded.QueueMusic,
+                                contentDescription = stringResource(R.string.cd_toggle_queue),
+                                selected = stage == NowPlayingStage.QUEUE,
+                                darkTheme = darkTheme,
+                                onClick = {
+                                    stage = if (stage == NowPlayingStage.QUEUE) NowPlayingStage.COVER else NowPlayingStage.QUEUE
+                                },
+                                testTag = "deck_queue_toggle"
+                            )
+                        }
                     }
                 }
             }
@@ -964,6 +1312,160 @@ fun NowPlayingSheet(
             }
         }
     }
+
+    if (showTrackInfoDialog) {
+        AudioTrackInfoDialog(
+            track = track,
+            onDismiss = { showTrackInfoDialog = false },
+            onShare = { onShareTrack(track) },
+            onToggleGeneralAudio = if (isGeneralAudio) {
+                { onPromoteGeneralAudioToMusic(track) }
+            } else {
+                null
+            }
+        )
+    }
+
+    if (showBookmarksDialog && isGeneralAudio) {
+        AudioBookmarksDialog(
+            trackTitle = track.title,
+            currentPositionMs = playbackState.positionMs,
+            bookmarks = audioBookmarks,
+            onAddBookmark = { label ->
+                onAddAudioBookmark(playbackState.positionMs, label)
+            },
+            onJumpTo = { posMs ->
+                onSeekTo(posMs)
+                showBookmarksDialog = false
+            },
+            onDelete = onRemoveAudioBookmark,
+            onDismiss = { showBookmarksDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun AudioBookmarksDialog(
+    trackTitle: String,
+    currentPositionMs: Long,
+    bookmarks: List<AudioBookmark>,
+    onAddBookmark: (String) -> Unit,
+    onJumpTo: (Long) -> Unit,
+    onDelete: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var noteInput by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "时间书签",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = trackTitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = noteInput,
+                    onValueChange = { noteInput = it },
+                    label = { Text("备注（可选，例如：重点片段）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        onAddBookmark(noteInput.trim())
+                        noteInput = ""
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("bookmark_add_current_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.BookmarkAdd,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("标记当前时间 (${currentPositionMs.formatDuration()})")
+                }
+
+                if (bookmarks.isEmpty()) {
+                    Text(
+                        text = "暂无时间书签。适合在听播客、会议录音或课程时随手标记重点，下次一键跳转。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(210.dp)
+                    ) {
+                        itemsIndexed(bookmarks, key = { _, bm -> bm.id }) { _, bm ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f))
+                                    .clickable { onJumpTo(bm.positionMs) }
+                                    .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = bm.positionMs.formatDuration(),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = bm.label.ifBlank { "时间标记" },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { onDelete(bm.id) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.DeleteOutline,
+                                        contentDescription = "删除书签",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("完成")
+            }
+        }
+    )
 }
 
 @Composable
@@ -974,6 +1476,7 @@ private fun CoverArtworkStage(
     isPlaying: Boolean,
     auraPalette: AuraPalette,
     lyricDocument: LyricDocument,
+    bookmarkCount: Int,
     positionMs: Long,
     darkTheme: Boolean,
     visualEffectsEnhanced: Boolean,
@@ -982,7 +1485,7 @@ private fun CoverArtworkStage(
     onFullArtworkBoundsChanged: (Rect) -> Unit,
     onDragCollapseStart: () -> Unit,
     onDragCollapseDelta: (Float) -> Unit,
-    onDragCollapseEnd: (Float) -> Unit,
+    onDragCollapseEnd: (velocityY: Float, totalDragDownPx: Float) -> Unit,
     onSwipeNext: () -> Unit,
     onSwipePrevious: () -> Unit,
     onTapLyricsPreview: () -> Unit
@@ -1035,7 +1538,9 @@ private fun CoverArtworkStage(
                     var totalDx = 0f
                     var totalDy = 0f
                     val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
+                    val recentSamples = ArrayDeque<Pair<Long, Float>>()
+                    tracker.addPosition(down.uptimeMillis, Offset.Zero)
+                    recordVerticalSample(recentSamples, down.uptimeMillis, 0f)
                     scope.launch { coverDragX.stop() }
 
                     while (true) {
@@ -1044,7 +1549,13 @@ private fun CoverArtworkStage(
                         if (!change.pressed) {
                             val vel = tracker.calculateVelocity()
                             when (axis) {
-                                CoverDragAxis.VERTICAL -> onDragCollapseEnd(vel.y)
+                                CoverDragAxis.VERTICAL -> {
+                                    val effectiveVelY = resolveScreenSpaceVerticalVelocity(
+                                        trackerVelY = vel.y,
+                                        recentSamples = recentSamples
+                                    )
+                                    onDragCollapseEnd(effectiveVelY, totalDy.coerceAtLeast(0f))
+                                }
                                 CoverDragAxis.HORIZONTAL -> {
                                     val dx = coverDragX.value
                                     val goNext = dx < -swipeSkipThresholdPx || vel.x < -700f
@@ -1071,9 +1582,10 @@ private fun CoverArtworkStage(
 
                         val delta = change.positionChange()
                         if (delta.x != 0f || delta.y != 0f) {
-                            tracker.addPosition(change.uptimeMillis, change.position)
                             totalDx += delta.x
                             totalDy += delta.y
+                            tracker.addPosition(change.uptimeMillis, Offset(totalDx, totalDy))
+                            recordVerticalSample(recentSamples, change.uptimeMillis, totalDy)
 
                             if (axis == CoverDragAxis.UNDECIDED) {
                                 if (abs(totalDy) > touchSlopPx && abs(totalDy) > abs(totalDx) * 1.15f) {
@@ -1263,14 +1775,15 @@ private fun CoverArtworkStage(
                         horizontalAlignment = if (isPrev) Alignment.Start else Alignment.End,
                         modifier = Modifier.widthIn(max = 176.dp)
                     ) {
+                        val unit = if (track.isGeneralAudio) "条" else "首"
                         Text(
-                            text = if (isPrev) "上一首" else "下一首",
+                            text = if (isPrev) "上一$unit" else "下一$unit",
                             style = MaterialTheme.typography.labelSmall,
                             color = accent,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = targetTrack?.title ?: "当前曲目",
+                            text = targetTrack?.title ?: if (track.isGeneralAudio) "当前音频" else "当前曲目",
                             style = MaterialTheme.typography.labelLarge,
                             color = ink,
                             maxLines = 1,
@@ -1278,7 +1791,11 @@ private fun CoverArtworkStage(
                         )
                         if (targetTrack != null) {
                             Text(
-                                text = targetTrack.artist,
+                                text = if (targetTrack.isGeneralAudio) {
+                                    targetTrack.folderPath.ifBlank { targetTrack.codecLabel }
+                                } else {
+                                    targetTrack.artist
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = ink.copy(alpha = 0.62f),
                                 maxLines = 1,
@@ -1300,7 +1817,7 @@ private fun CoverArtworkStage(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Live 1-line translucent lyric preview pill — tap to dive into full word-by-word stage
+        // Music mode -> 1-line lyric preview pill; General Audio mode -> timestamp bookmarks quick pill
         Box(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
@@ -1308,15 +1825,40 @@ private fun CoverArtworkStage(
                 .border(0.6.dp, pillBorder, RoundedCornerShape(50))
                 .bouncyClickable(pressedScale = 0.95f, onClick = onTapLyricsPreview)
                 .padding(horizontal = 16.dp, vertical = 7.dp)
-                .testTag("cover_lyric_preview_pill")
+                .testTag(if (track.isGeneralAudio) "cover_bookmark_pill" else "cover_lyric_preview_pill")
         ) {
-            Text(
-                text = activeLyricSnippet ?: "左右滑封面切歌 · 轻触开启逐字歌词舞台",
-                style = MaterialTheme.typography.bodyMedium,
-                color = ink.copy(alpha = 0.82f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (track.isGeneralAudio) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = if (bookmarkCount > 0) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkAdd,
+                        contentDescription = null,
+                        tint = if (bookmarkCount > 0) accent else ink.copy(alpha = 0.72f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (bookmarkCount > 0) {
+                            "已标记 $bookmarkCount 个时间书签 · 轻触跳转或管理"
+                        } else {
+                            "普通音频模式 · 轻触添加时间书签"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = ink.copy(alpha = 0.84f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else {
+                Text(
+                    text = activeLyricSnippet ?: "左右滑封面切歌 · 轻触开启逐字歌词舞台",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink.copy(alpha = 0.82f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1326,6 +1868,7 @@ private fun QueueStageView(
     queue: List<Track>,
     currentIndex: Int,
     isPlaying: Boolean,
+    isGeneralAudioMode: Boolean,
     darkTheme: Boolean,
     onSelectIndex: (Int) -> Unit,
     onRemoveIndex: (Int) -> Unit,
@@ -1352,12 +1895,16 @@ private fun QueueStageView(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "待播队列 · ${queue.size} 首",
+                text = if (isGeneralAudioMode) {
+                    "普通音频队列 · ${queue.size} 条"
+                } else {
+                    "待播队列 · ${queue.size} 首"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 color = ink.copy(alpha = 0.92f)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (queue.isNotEmpty()) {
+                if (!isGeneralAudioMode && queue.any { !it.isGeneralAudio }) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -1446,7 +1993,11 @@ private fun QueueStageView(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${item.artist} · ${item.durationMs.formatDuration()}",
+                            text = if (item.isGeneralAudio) {
+                                "${item.folderPath.ifBlank { "本地音频" }} · ${item.durationMs.formatDuration()}"
+                            } else {
+                                "${item.artist} · ${item.durationMs.formatDuration()}"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = subInk,
                             maxLines = 1,
@@ -1486,7 +2037,7 @@ private fun QueueStageView(
         }
     }
 
-    if (showSaveDialog) {
+    if (showSaveDialog && !isGeneralAudioMode) {
         AlertDialog(
             onDismissRequest = { showSaveDialog = false },
             title = { Text("将当前待播队列存为歌单") },

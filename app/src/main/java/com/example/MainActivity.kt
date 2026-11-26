@@ -99,6 +99,7 @@ import com.example.ui.components.TopStatusToast
 import com.example.ui.components.TopUndoBanner
 import com.example.ui.components.liquidGlassBackdropSource
 import com.example.ui.components.rememberLiquidGlassBackdropState
+import com.example.ui.components.shareAudioTrack
 import com.example.ui.screens.AiChatScreen
 import com.example.ui.screens.DuplicateManagerSheet
 import com.example.ui.screens.EqualizerSheet
@@ -108,6 +109,7 @@ import com.example.ui.screens.NowPlayingSheet
 import com.example.ui.screens.NowPlayingStage
 import com.example.ui.screens.PlaylistsScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.shouldCollapseNowPlayingSheet
 import com.example.ui.theme.AuralisTheme
 import com.example.ui.theme.RubyAccent
 import com.example.viewmodel.AuralisViewModel
@@ -215,6 +217,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val aiConfig by viewModel.aiConfig.collectAsStateWithLifecycle()
     val aiCatalogAttachmentPrefs by viewModel.aiCatalogAttachmentPrefs.collectAsStateWithLifecycle()
     val playlistCoverConfigs by viewModel.playlistCoverConfigs.collectAsStateWithLifecycle()
+    val audioBookmarks by viewModel.audioBookmarks.collectAsStateWithLifecycle()
     val aiSessions by viewModel.aiSessions.collectAsStateWithLifecycle()
     val activeAiSessionId by viewModel.activeAiSessionId.collectAsStateWithLifecycle()
     val activeAiMessages by viewModel.activeAiMessages.collectAsStateWithLifecycle()
@@ -265,10 +268,11 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         }
     }
 
-    fun collapseNowPlaying() {
+    fun collapseNowPlaying(initialVelocityFraction: Float = 0f) {
         scope.launch {
             playerExpansion.animateTo(
                 targetValue = 0f,
+                initialVelocity = initialVelocityFraction,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioNoBouncy,
                     stiffness = Spring.StiffnessMedium
@@ -502,12 +506,18 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                 playerExpansion.snapTo(next)
             }
         }
-        val handleSheetDragEnd: (Float) -> Unit = { velY ->
-            // Lowered velocity & distance threshold so swift moderate downward flicks reliably collapse
-            val shouldCollapse = velY > 320f || (velY >= -300f && playerExpansion.value < 0.86f)
+        val handleSheetDragEnd: (Float, Float) -> Unit = { velY, totalDragDownPx ->
+            val shouldCollapse = shouldCollapseNowPlayingSheet(
+                expansion = playerExpansion.value,
+                velocityYPxPerSec = velY,
+                totalDragDownPx = totalDragDownPx,
+                containerHeightPx = containerHeightPx
+            )
             if (shouldCollapse) {
                 viewModel.haptics.tickLight()
-                collapseNowPlaying()
+                // Hand off thumb downward flick speed directly into the collapse spring
+                val initialVelFrac = (-velY / containerHeightPx).coerceIn(-6f, 0f)
+                collapseNowPlaying(initialVelocityFraction = initialVelFrac)
             } else {
                 expandNowPlaying()
             }
@@ -631,6 +641,11 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onBatchRemoveFromLibrary = viewModel::batchRemoveTracksFromLibrary,
                             onBurnLyricsToAudio = viewModel::requestBurnLyricsToAudio,
                             onExportTrackLyrics = viewModel::requestExportTrackLyrics,
+                            onShareTrack = { track ->
+                                if (!shareAudioTrack(context, track)) {
+                                    viewModel.showBanner("无法调起系统分享该音频文件")
+                                }
+                            },
                             duplicateGroupCount = duplicateGroups.size,
                             duplicateRedundantCount = duplicateGroups.sumOf { it.redundantCount },
                             onOpenDuplicateManager = { showDuplicateManager = true },
@@ -866,6 +881,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     auraPalette = auraPalette,
                     lyricDocument = currentLyric,
                     lyricSettings = lyricSettings,
+                    audioBookmarks = audioBookmarks[currentTrack.id].orEmpty(),
                     eqEnabled = eqState.enabled,
                     darkTheme = darkTheme,
                     visualEffectsEnhanced = visualEffectsEnhanced,
@@ -888,6 +904,21 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     onSkipNext = viewModel::skipNext,
                     onSkipPrevious = viewModel::skipPrevious,
                     onSeekTo = viewModel::seekTo,
+                    onSeekRelative = viewModel::seekRelative,
+                    onAddAudioBookmark = { posMs, label ->
+                        viewModel.addAudioBookmark(currentTrack.id, posMs, label)
+                    },
+                    onRemoveAudioBookmark = { bmId ->
+                        viewModel.removeAudioBookmark(currentTrack.id, bmId)
+                    },
+                    onPromoteGeneralAudioToMusic = { track ->
+                        viewModel.setTracksGeneralAudio(listOf(track.id), false)
+                    },
+                    onShareTrack = { track ->
+                        if (!shareAudioTrack(context, track)) {
+                            viewModel.showBanner("无法调起系统分享该音频文件")
+                        }
+                    },
                     onToggleFavorite = viewModel::toggleFavorite,
                     onToggleShuffle = {
                         viewModel.haptics.tickLight()

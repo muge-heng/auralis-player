@@ -505,17 +505,90 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 5)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 6)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
+    }
+
+    @Test
+    fun nowPlayingSheetCollapseHeuristicHandlesCrispFlicksLongFastSwipesAndUpwardCancel() {
+        // 1. Short crisp downward flick (32px, 600px/s) -> must collapse
+        assertTrue(
+            com.example.ui.screens.shouldCollapseNowPlayingSheet(
+                expansion = 0.98f,
+                velocityYPxPerSec = 600f,
+                totalDragDownPx = 32f,
+                containerHeightPx = 2200f
+            )
+        )
+        // 2. Long fast downward swipe (450px, 2800px/s) -> must collapse
+        assertTrue(
+            com.example.ui.screens.shouldCollapseNowPlayingSheet(
+                expansion = 0.78f,
+                velocityYPxPerSec = 2800f,
+                totalDragDownPx = 450f,
+                containerHeightPx = 2200f
+            )
+        )
+        // 3. Slow gentle drag beyond 72px (0 velocity at release) -> must collapse
+        assertTrue(
+            com.example.ui.screens.shouldCollapseNowPlayingSheet(
+                expansion = 0.95f,
+                velocityYPxPerSec = 0f,
+                totalDragDownPx = 80f,
+                containerHeightPx = 2200f
+            )
+        )
+        // 4. Tiny accidental nudge (10px, low velocity) -> stays open
+        assertFalse(
+            com.example.ui.screens.shouldCollapseNowPlayingSheet(
+                expansion = 0.995f,
+                velocityYPxPerSec = 80f,
+                totalDragDownPx = 10f,
+                containerHeightPx = 2200f
+            )
+        )
+        // 5. Intentional fast upward reversal (-800px/s) -> cancels collapse and stays open
+        assertFalse(
+            com.example.ui.screens.shouldCollapseNowPlayingSheet(
+                expansion = 0.85f,
+                velocityYPxPerSec = -800f,
+                totalDragDownPx = 120f,
+                containerHeightPx = 2200f
+            )
+        )
+    }
+
+    @Test
+    fun audioBookmarksJsonRoundTripsAndSortsChronologically() {
+        val original = mapOf(
+            "rec_1" to listOf(
+                com.example.model.AudioBookmark(id = "b2", positionMs = 125_000L, label = "结论摘要", createdAtMs = 200L),
+                com.example.model.AudioBookmark(id = "b1", positionMs = 15_000L, label = "开场要点", createdAtMs = 100L)
+            )
+        )
+        val encoded = com.example.data.local.PreferencesRepository.serializeAudioBookmarksJson(original)
+        val decoded = com.example.data.local.PreferencesRepository.parseAudioBookmarksJson(encoded)
+        val list = decoded["rec_1"].orEmpty()
+        assertEquals(2, list.size)
+        assertEquals("b1", list[0].id)
+        assertEquals(15_000L, list[0].positionMs)
+        assertEquals("开场要点", list[0].label)
+        assertEquals("b2", list[1].id)
+        assertEquals(125_000L, list[1].positionMs)
+        assertEquals("结论摘要", list[1].label)
+
+        assertEquals("2.50 MB", com.example.ui.components.formatFileSize(2_621_440L))
+        assertEquals("未知大小", com.example.ui.components.formatFileSize(0L))
     }
 
     @Test

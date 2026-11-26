@@ -294,4 +294,16 @@ enum class DeletionGuardMode(
     }
 }
 
+/**
+ * Timestamp bookmark attached to a local audio file (ideal for podcasts, lectures,
+ * voice recordings, and language listening in General Audio mode).
+ */
+data class AudioBookmark(
+    val id: String,
+    val positionMs: Long,
+    val label: String,
+    val createdAtMs: Long = 0L
+)
+
+
 

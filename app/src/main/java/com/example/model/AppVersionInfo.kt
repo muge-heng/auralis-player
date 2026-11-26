@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.4"
-    const val PREVIOUS_VERSION = "0.9.3"
+    const val CURRENT_VERSION = "0.9.5"
+    const val PREVIOUS_VERSION = "0.9.4"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,18 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.4",
+            version = "0.9.5",
             tag = "当前版本",
+            title = "播放页下滑手势根治 · 普通音频专属播放模式与菜单精修",
+            highlights = listOf(
+                "彻底修复播放页快速下滑收起时因视图同步下移导致的坐标速度反算失真问题：改用屏幕空间累计位移采样并衔接指尖初速度，无论是短距轻甩还是长距快滑都能干脆收起，同时扩大标题与信息区的下滑触发范围。",
+                "重构普通音频专属播放界面：移除不适配的 AI 入口、歌词舞台、红心收藏与队列「存为歌单」按钮，替换为更贴合播客/录音/课程收听的 ±15 秒快进快退、0.5x–3.0x 扩展倍速、持久化时间书签标记与跳转、音频文件信息检查器（含一键移入唱片馆）与系统原声分享。",
+                "同步精修普通音频列表「更多」菜单与迷你播放条：隐藏红心按钮并剔除「加入歌单」「刻录歌词」「导出歌词」等音乐专属项，新增「查看音频信息」与「分享音频文件」，副标题清晰展示目录与格式规格。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.4",
+            tag = "历史版本",
             title = "全透明悬浮液态玻璃架构 · 旗舰视觉效果增强引擎",
             highlights = listOf(
                 "彻底移除悬浮歌曲播放条与 Liquid Glass 悬浮底栏背后的黑色/白色固定底板，改为全屏透底流淌布局与实时 GPU 毛玻璃透视背景，滑动列表与专辑封面可自然从悬浮条下方流过。",

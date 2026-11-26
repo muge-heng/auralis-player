@@ -34,6 +34,7 @@ import com.example.model.AiConfig
 import com.example.model.AiErrorReport
 import com.example.model.AiSessionRuntimeState
 import com.example.model.AiSuggestedPlaylist
+import com.example.model.AudioBookmark
 import com.example.model.AuraPalette
 import com.example.model.CustomLyricEntity
 import com.example.model.DeletionGuardMode
@@ -189,6 +190,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiCatalogAttachmentPrefs())
 
     val playlistCoverConfigs: StateFlow<Map<String, com.example.model.PlaylistCoverConfig>> = prefs.playlistCoverConfigsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val audioBookmarks: StateFlow<Map<String, List<AudioBookmark>>> = prefs.audioBookmarksFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
     val allTracks: StateFlow<List<Track>> = trackDao.observeAllTracks()
@@ -945,6 +949,35 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         playbackController.seekTo(ms)
     }
 
+    fun seekRelative(deltaMs: Long) {
+        val state = playbackState.value
+        val track = state.currentTrack ?: return
+        val maxDur = state.durationMs.coerceAtLeast(track.durationMs).coerceAtLeast(0L)
+        val target = (state.positionMs + deltaMs).coerceIn(0L, maxDur)
+        haptics.tickLight()
+        playbackController.seekTo(target)
+    }
+
+    fun addAudioBookmark(trackId: String, positionMs: Long, label: String) = viewModelScope.launch {
+        haptics.springImpact()
+        val existingCount = audioBookmarks.value[trackId].orEmpty().size
+        val cleanLabel = label.trim().ifBlank { "时间标记 #${existingCount + 1}" }
+        prefs.addAudioBookmark(
+            trackId = trackId,
+            bookmark = AudioBookmark(
+                id = "bm_${System.currentTimeMillis()}_${positionMs}",
+                positionMs = positionMs.coerceAtLeast(0L),
+                label = cleanLabel,
+                createdAtMs = System.currentTimeMillis()
+            )
+        )
+    }
+
+    fun removeAudioBookmark(trackId: String, bookmarkId: String) = viewModelScope.launch {
+        haptics.tickLight()
+        prefs.removeAudioBookmark(trackId, bookmarkId)
+    }
+
     fun toggleFavorite(track: Track) {
         haptics.heartPulse()
         val newFav = !track.isFavorite
@@ -976,8 +1009,14 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 )
             }.getOrDefault(AuraPalette())
         }
-        // Load lyrics in priority order
-        loadLyricsForTrack(track)
+        // Skip music lyric loading when playing General Audio (recordings, podcasts, etc.)
+        if (track.isGeneralAudio) {
+            lyricLoadJob?.cancel()
+            _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
+        } else {
+            // Load lyrics in priority order
+            loadLyricsForTrack(track)
+        }
     }
 
     private fun loadLyricsForTrack(track: Track) {
@@ -1197,8 +1236,13 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun saveQueueAsPlaylist(name: String) {
-        val queueIds = playbackState.value.queue.map { it.id }
-        if (queueIds.isEmpty()) return
+        val queueIds = playbackState.value.queue
+            .filter { !it.isGeneralAudio }
+            .map { it.id }
+        if (queueIds.isEmpty()) {
+            showBanner("普通音频队列不支持存为音乐歌单")
+            return
+        }
         createPlaylist(name, "来自当前待播队列 (${queueIds.size} 首)", queueIds, showToast = true)
     }
 

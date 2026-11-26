@@ -13,6 +13,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.AiCatalogAttachmentPrefs
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
+import com.example.model.AudioBookmark
 import com.example.model.DEFAULT_AI_MAX_OUTPUT_TOKENS
 import com.example.model.DeletionGuardMode
 import com.example.model.EQ_BAND_COUNT
@@ -99,6 +100,9 @@ class PreferencesRepository(private val context: Context) {
 
         // Playlist Cover Customization (Custom, Artist Auto, and Smart Collections)
         val PLAYLIST_COVER_CONFIGS_JSON = stringPreferencesKey("playlist_cover_configs_json")
+
+        // Per-Track Timestamp Bookmarks (General Audio Mode)
+        val AUDIO_BOOKMARKS_JSON = stringPreferencesKey("audio_bookmarks_json")
     }
 
     val darkThemeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -231,6 +235,10 @@ class PreferencesRepository(private val context: Context) {
 
     val playlistCoverConfigsFlow: Flow<Map<String, PlaylistCoverConfig>> = context.auralisDataStore.data.map { prefs ->
         parsePlaylistCoverConfigsJson(prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON])
+    }
+
+    val audioBookmarksFlow: Flow<Map<String, List<AudioBookmark>>> = context.auralisDataStore.data.map { prefs ->
+        parseAudioBookmarksJson(prefs[Keys.AUDIO_BOOKMARKS_JSON])
     }
 
     suspend fun setDarkTheme(dark: Boolean) {
@@ -370,6 +378,33 @@ class PreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun addAudioBookmark(trackId: String, bookmark: AudioBookmark) {
+        val cleanTrackId = trackId.trim()
+        if (cleanTrackId.isEmpty()) return
+        context.auralisDataStore.edit { prefs ->
+            val map = parseAudioBookmarksJson(prefs[Keys.AUDIO_BOOKMARKS_JSON]).toMutableMap()
+            val list = map[cleanTrackId].orEmpty().toMutableList()
+            list.add(bookmark)
+            map[cleanTrackId] = list.sortedBy { it.positionMs }.take(40)
+            prefs[Keys.AUDIO_BOOKMARKS_JSON] = serializeAudioBookmarksJson(map)
+        }
+    }
+
+    suspend fun removeAudioBookmark(trackId: String, bookmarkId: String) {
+        val cleanTrackId = trackId.trim()
+        if (cleanTrackId.isEmpty()) return
+        context.auralisDataStore.edit { prefs ->
+            val map = parseAudioBookmarksJson(prefs[Keys.AUDIO_BOOKMARKS_JSON]).toMutableMap()
+            val updated = map[cleanTrackId].orEmpty().filterNot { it.id == bookmarkId }
+            if (updated.isEmpty()) {
+                map.remove(cleanTrackId)
+            } else {
+                map[cleanTrackId] = updated
+            }
+            prefs[Keys.AUDIO_BOOKMARKS_JSON] = serializeAudioBookmarksJson(map)
+        }
+    }
+
     companion object {
         fun parseCustomPresetsJson(raw: String?): List<EqPreset> {
             if (raw.isNullOrBlank()) return emptyList()
@@ -459,6 +494,109 @@ class PreferencesRepository(private val context: Context) {
                 }
             }
             return root.toString()
+        }
+
+        private fun escapeBookmarkField(raw: String): String {
+            return raw
+                .replace("\\", "\\\\")
+                .replace("\t", "\\t")
+                .replace("\n", "\\n")
+                .replace("\r", "")
+        }
+
+        private fun unescapeBookmarkField(raw: String): String {
+            val sb = StringBuilder(raw.length)
+            var i = 0
+            while (i < raw.length) {
+                val ch = raw[i]
+                if (ch == '\\' && i + 1 < raw.length) {
+                    when (raw[i + 1]) {
+                        't' -> sb.append('\t')
+                        'n' -> sb.append('\n')
+                        '\\' -> sb.append('\\')
+                        else -> sb.append(raw[i + 1])
+                    }
+                    i += 2
+                } else {
+                    sb.append(ch)
+                    i += 1
+                }
+            }
+            return sb.toString()
+        }
+
+        fun parseAudioBookmarksJson(raw: String?): Map<String, List<AudioBookmark>> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("BM1\n") || trimmed == "BM1") {
+                val grouped = linkedMapOf<String, MutableList<AudioBookmark>>()
+                trimmed.lineSequence().drop(1).forEach { line ->
+                    if (line.isBlank()) return@forEach
+                    val parts = line.split('\t')
+                    if (parts.size < 5) return@forEach
+                    val trackId = unescapeBookmarkField(parts[0])
+                    val id = unescapeBookmarkField(parts[1])
+                    val pos = parts[2].toLongOrNull() ?: return@forEach
+                    val created = parts[3].toLongOrNull() ?: 0L
+                    val label = unescapeBookmarkField(parts[4])
+                    if (trackId.isNotBlank() && pos >= 0L) {
+                        grouped.getOrPut(trackId) { mutableListOf() }.add(
+                            AudioBookmark(
+                                id = id.ifBlank { "bm_${trackId}_$pos" },
+                                positionMs = pos,
+                                label = label,
+                                createdAtMs = created
+                            )
+                        )
+                    }
+                }
+                return grouped.mapValues { (_, list) -> list.sortedBy { it.positionMs } }
+            }
+            return runCatching {
+                val root = JSONObject(trimmed)
+                val result = linkedMapOf<String, List<AudioBookmark>>()
+                val keys = root.keys()
+                while (keys.hasNext()) {
+                    val trackId = keys.next()
+                    val arr = root.optJSONArray(trackId) ?: continue
+                    val list = mutableListOf<AudioBookmark>()
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.optJSONObject(i) ?: continue
+                        val pos = obj.optLong("pos", -1L)
+                        if (pos < 0L) continue
+                        list.add(
+                            AudioBookmark(
+                                id = obj.optString("id", "bm_${trackId}_$i"),
+                                positionMs = pos,
+                                label = obj.optString("label", "标记 #${i + 1}"),
+                                createdAtMs = obj.optLong("ts", 0L)
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) {
+                        result[trackId] = list.sortedBy { it.positionMs }
+                    }
+                }
+                result
+            }.getOrDefault(emptyMap())
+        }
+
+        fun serializeAudioBookmarksJson(map: Map<String, List<AudioBookmark>>): String {
+            val sb = StringBuilder("BM1")
+            map.forEach { (trackId, bookmarks) ->
+                if (trackId.isNotBlank() && bookmarks.isNotEmpty()) {
+                    val escTrack = escapeBookmarkField(trackId)
+                    bookmarks.sortedBy { it.positionMs }.forEach { bm ->
+                        sb.append('\n')
+                            .append(escTrack).append('\t')
+                            .append(escapeBookmarkField(bm.id)).append('\t')
+                            .append(bm.positionMs).append('\t')
+                            .append(bm.createdAtMs).append('\t')
+                            .append(escapeBookmarkField(bm.label))
+                    }
+                }
+            }
+            return sb.toString()
         }
     }
 }

@@ -372,7 +372,11 @@ fun MiniPlayerBar(
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "${activeTrack.artist} · ${activeTrack.album}",
+                                    text = if (activeTrack.isGeneralAudio) {
+                                        "普通音频 · ${activeTrack.folderPath.ifBlank { activeTrack.codecLabel }}"
+                                    } else {
+                                        "${activeTrack.artist} · ${activeTrack.album}"
+                                    },
                                     style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
                                     color = subInk,
                                     maxLines = 1,
@@ -435,7 +439,8 @@ fun MiniPlayerBar(
                 if (absSwipe > 0.08f) {
                     val isPrev = swipeProgress > 0f
                     val targetTrack = if (isPrev) previousTrack else nextTrack
-                    val dirLabel = if (isPrev) "上一首" else "下一首"
+                    val unit = if (track.isGeneralAudio) "条" else "首"
+                    val dirLabel = if (isPrev) "上一$unit" else "下一$unit"
                     val readyToTrigger = absSwipe >= 0.92f
                     val previewAlpha = ((absSwipe - 0.06f) * 1.45f).coerceIn(0f, 1f)
 
@@ -479,7 +484,13 @@ fun MiniPlayerBar(
                                     maxLines = 1
                                 )
                                 Text(
-                                    text = targetTrack?.let { "${it.title} · ${it.artist}" } ?: "当前队列仅此一首",
+                                    text = targetTrack?.let { target ->
+                                        if (target.isGeneralAudio) {
+                                            "${target.title} · ${target.folderPath.ifBlank { target.codecLabel }}"
+                                        } else {
+                                            "${target.title} · ${target.artist}"
+                                        }
+                                    } ?: "当前队列仅此一$unit",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = titleInk,
                                     fontWeight = FontWeight.Medium,

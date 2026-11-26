@@ -46,6 +46,7 @@ import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
@@ -54,6 +55,7 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Radar
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -99,6 +101,7 @@ import com.example.model.LibrarySortOption
 import com.example.model.PlaylistWithCount
 import com.example.model.Track
 import com.example.model.formatDuration
+import com.example.ui.components.AudioTrackInfoDialog
 import com.example.ui.components.BatchPlaylistPickerDialog
 import com.example.ui.components.LiveEqualizerBars
 import com.example.ui.components.QualityBadgePill
@@ -150,6 +153,7 @@ fun LibraryScreen(
     onBatchRemoveFromLibrary: (List<String>) -> Unit,
     onBurnLyricsToAudio: (Track) -> Unit = {},
     onExportTrackLyrics: (Track) -> Unit = {},
+    onShareTrack: (Track) -> Unit = {},
     duplicateGroupCount: Int = 0,
     duplicateRedundantCount: Int = 0,
     onOpenDuplicateManager: () -> Unit = {},
@@ -162,6 +166,7 @@ fun LibraryScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingPlaylistTargetIds by remember { mutableStateOf<List<String>?>(null) }
+    var inspectingTrack by remember { mutableStateOf<Track?>(null) }
 
     val showGeneralAudioSwitcher = enableGeneralAudioMode || generalAudioTracks.isNotEmpty()
     val effectiveViewingGeneral = showGeneralAudioSwitcher && viewingGeneralAudio
@@ -786,11 +791,12 @@ fun LibraryScreen(
                     } else {
                         items(activeFilteredTracks, key = { it.id }) { track ->
                             val isSelected = track.id in selectedIds
+                            val isGeneralItem = effectiveViewingGeneral || track.isGeneralAudio
                             TrackListItem(
                                 track = track,
                                 isCurrent = track.id == currentTrackId,
                                 isPlaying = isPlaying,
-                                playlists = if (effectiveViewingGeneral) emptyList() else playlists,
+                                playlists = if (isGeneralItem) emptyList() else playlists,
                                 selectionMode = isSelectionMode,
                                 isSelected = isSelected,
                                 onClick = {
@@ -810,11 +816,17 @@ fun LibraryScreen(
                                 onAppendToQueue = { onAppendToQueue(listOf(track)) },
                                 onToggleFavorite = { onToggleFavorite(track) },
                                 onAddToPlaylist = { plId -> onAddToPlaylist(plId, track) },
-                                onOpenPlaylistPicker = if (effectiveViewingGeneral) null else {
+                                onOpenPlaylistPicker = if (isGeneralItem) null else {
                                     { pendingPlaylistTargetIds = listOf(track.id) }
                                 },
-                                onBurnLyricsToAudio = { onBurnLyricsToAudio(track) },
-                                onExportTrackLyrics = { onExportTrackLyrics(track) },
+                                onBurnLyricsToAudio = if (isGeneralItem) null else {
+                                    { onBurnLyricsToAudio(track) }
+                                },
+                                onExportTrackLyrics = if (isGeneralItem) null else {
+                                    { onExportTrackLyrics(track) }
+                                },
+                                onShowTrackInfo = { inspectingTrack = track },
+                                onShareTrack = { onShareTrack(track) },
                                 onRemoveFromLibrary = { onBatchRemoveFromLibrary(listOf(track.id)) },
                                 customExtraMenuItems = { dismiss ->
                                     DropdownMenuItem(
@@ -1069,6 +1081,17 @@ fun LibraryScreen(
                 selectedIds = emptySet()
             },
             onDismiss = { pendingPlaylistTargetIds = null }
+        )
+    }
+
+    inspectingTrack?.let { infoTrack ->
+        AudioTrackInfoDialog(
+            track = infoTrack,
+            onDismiss = { inspectingTrack = null },
+            onShare = { onShareTrack(infoTrack) },
+            onToggleGeneralAudio = {
+                onSetTracksGeneralAudio(listOf(infoTrack.id), !infoTrack.isGeneralAudio)
+            }
         )
     }
 }
@@ -1353,11 +1376,14 @@ fun TrackListItem(
     onOpenPlaylistPicker: (() -> Unit)? = null,
     onBurnLyricsToAudio: (() -> Unit)? = null,
     onExportTrackLyrics: (() -> Unit)? = null,
+    onShowTrackInfo: (() -> Unit)? = null,
+    onShareTrack: (() -> Unit)? = null,
     onRemoveFromLibrary: (() -> Unit)? = null,
     customExtraMenuItems: (@Composable (dismiss: () -> Unit) -> Unit)? = null
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val highlighted = if (selectionMode) isSelected else isCurrent
+    val isGeneralAudio = track.isGeneralAudio
 
     Row(
         modifier = Modifier
@@ -1425,7 +1451,11 @@ fun TrackListItem(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "${track.artist} · ${track.album}",
+                text = if (isGeneralAudio) {
+                    "${track.folderPath.ifBlank { "本地音频" }} · ${track.fileName.ifBlank { track.codecLabel }}"
+                } else {
+                    "${track.artist} · ${track.album}"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -1453,13 +1483,15 @@ fun TrackListItem(
         }
 
         if (!selectionMode) {
-            IconButton(onClick = onToggleFavorite) {
-                Icon(
-                    imageVector = if (track.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    contentDescription = stringResource(R.string.cd_favorite),
-                    tint = if (track.isFavorite) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
+            if (!isGeneralAudio) {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (track.isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                        contentDescription = stringResource(R.string.cd_favorite),
+                        tint = if (track.isFavorite) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             Box {
@@ -1473,7 +1505,7 @@ fun TrackListItem(
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("下一首播放") },
+                        text = { Text(if (isGeneralAudio) "下一条播放" else "下一首播放") },
                         onClick = {
                             menuExpanded = false
                             onPlayNext()
@@ -1488,65 +1520,108 @@ fun TrackListItem(
                             }
                         )
                     }
-                    if (onOpenPlaylistPicker != null) {
-                        DropdownMenuItem(
-                            text = { Text("加入歌单...") },
-                            onClick = {
-                                menuExpanded = false
-                                onOpenPlaylistPicker()
-                            }
-                        )
-                    } else if (playlists.isNotEmpty()) {
-                        playlists.take(5).forEach { pl ->
+                    if (!isGeneralAudio) {
+                        if (onOpenPlaylistPicker != null) {
                             DropdownMenuItem(
-                                text = { Text("加入歌单：${pl.playlist.name}") },
+                                text = { Text("加入歌单...") },
                                 onClick = {
                                     menuExpanded = false
-                                    onAddToPlaylist(pl.playlist.id)
+                                    onOpenPlaylistPicker()
                                 }
+                            )
+                        } else if (playlists.isNotEmpty()) {
+                            playlists.take(5).forEach { pl ->
+                                DropdownMenuItem(
+                                    text = { Text("加入歌单：${pl.playlist.name}") },
+                                    onClick = {
+                                        menuExpanded = false
+                                        onAddToPlaylist(pl.playlist.id)
+                                    }
+                                )
+                            }
+                        }
+                        if (onBurnLyricsToAudio != null) {
+                            DropdownMenuItem(
+                                text = { Text("刻录歌词到音频文件") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Album,
+                                        contentDescription = null,
+                                        tint = ChampagneGold,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onBurnLyricsToAudio()
+                                },
+                                modifier = Modifier.testTag("track_menu_burn_lyrics")
+                            )
+                        }
+                        if (onExportTrackLyrics != null) {
+                            DropdownMenuItem(
+                                text = { Text("导出歌词文件") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.FileDownload,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    onExportTrackLyrics()
+                                },
+                                modifier = Modifier.testTag("track_menu_export_lyrics")
                             )
                         }
                     }
-                    if (onBurnLyricsToAudio != null) {
+                    if (onShowTrackInfo != null) {
                         DropdownMenuItem(
-                            text = { Text("刻录歌词到音频文件") },
+                            text = { Text(if (isGeneralAudio) "查看音频信息" else "查看曲目信息") },
                             leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Rounded.Album,
+                                    imageVector = Icons.Rounded.Info,
                                     contentDescription = null,
-                                    tint = ChampagneGold,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                             },
                             onClick = {
                                 menuExpanded = false
-                                onBurnLyricsToAudio()
+                                onShowTrackInfo()
                             },
-                            modifier = Modifier.testTag("track_menu_burn_lyrics")
+                            modifier = Modifier.testTag("track_menu_info")
                         )
                     }
-                    if (onExportTrackLyrics != null) {
+                    if (onShareTrack != null) {
                         DropdownMenuItem(
-                            text = { Text("导出歌词文件") },
+                            text = { Text("分享音频文件") },
                             leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Rounded.FileDownload,
+                                    imageVector = Icons.Rounded.Share,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(18.dp)
                                 )
                             },
                             onClick = {
                                 menuExpanded = false
-                                onExportTrackLyrics()
+                                onShareTrack()
                             },
-                            modifier = Modifier.testTag("track_menu_export_lyrics")
+                            modifier = Modifier.testTag("track_menu_share")
                         )
                     }
                     customExtraMenuItems?.invoke { menuExpanded = false }
                     if (onRemoveFromLibrary != null) {
                         DropdownMenuItem(
-                            text = { Text("从曲库列表移出", color = RubyAccent) },
+                            text = {
+                                Text(
+                                    if (isGeneralAudio) "从普通音频列表移出" else "从曲库列表移出",
+                                    color = RubyAccent
+                                )
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onRemoveFromLibrary()
