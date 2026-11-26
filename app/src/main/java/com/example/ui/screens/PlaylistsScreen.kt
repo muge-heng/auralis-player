@@ -958,7 +958,12 @@ fun PlaylistsScreen(
                         exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                            .padding(
+                                start = 14.dp,
+                                end = 14.dp,
+                                top = 10.dp,
+                                bottom = (contentBottomPadding + 10).dp
+                            )
                     ) {
                         Surface(
                             shape = RoundedCornerShape(22.dp),

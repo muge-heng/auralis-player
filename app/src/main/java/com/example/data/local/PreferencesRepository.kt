@@ -43,6 +43,7 @@ class PreferencesRepository(private val context: Context) {
         val DARK_THEME = booleanPreferencesKey("dark_theme")
         val HAPTIC_PROFILE = stringPreferencesKey("haptic_profile")
         val NAV_BAR_STYLE = stringPreferencesKey("nav_bar_style")
+        val VISUAL_EFFECTS_ENHANCED = booleanPreferencesKey("visual_effects_enhanced")
         val SHOW_LIBRARY_HERO = booleanPreferencesKey("show_library_hero")
         val ENABLE_GENERAL_AUDIO_MODE = booleanPreferencesKey("enable_general_audio_mode")
         val DELETION_GUARD_MODE = stringPreferencesKey("deletion_guard_mode")
@@ -112,6 +113,10 @@ class PreferencesRepository(private val context: Context) {
     val navBarStyleFlow: Flow<NavBarStyle> = context.auralisDataStore.data.map { prefs ->
         val raw = prefs[Keys.NAV_BAR_STYLE] ?: NavBarStyle.CLASSIC.name
         runCatching { NavBarStyle.valueOf(raw) }.getOrDefault(NavBarStyle.CLASSIC)
+    }
+
+    val visualEffectsEnhancedFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
+        prefs[Keys.VISUAL_EFFECTS_ENHANCED] ?: false
     }
 
     val showLibraryHeroFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -238,6 +243,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setNavBarStyle(style: NavBarStyle) {
         context.auralisDataStore.edit { it[Keys.NAV_BAR_STYLE] = style.name }
+    }
+
+    suspend fun setVisualEffectsEnhanced(enabled: Boolean) {
+        context.auralisDataStore.edit { it[Keys.VISUAL_EFFECTS_ENHANCED] = enabled }
     }
 
     suspend fun setShowLibraryHero(show: Boolean) {

@@ -255,7 +255,7 @@ fun AiChatScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Transparent)
             .imePadding()
             .padding(bottom = contentBottomPadding.dp)
     ) {

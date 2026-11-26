@@ -4,9 +4,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode as AnimRepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -18,6 +23,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -91,6 +97,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -149,6 +156,7 @@ fun NowPlayingSheet(
     lyricSettings: LyricSettings,
     eqEnabled: Boolean,
     darkTheme: Boolean = true,
+    visualEffectsEnhanced: Boolean = false,
     artworkAlpha: Float = 1f,
     onActiveArtworkBoundsChanged: (Rect, Dp) -> Unit = { _, _ -> },
     onStageChanged: (NowPlayingStage) -> Unit = {},
@@ -265,11 +273,12 @@ fun NowPlayingSheet(
                 sheetRootOffset = coords.positionInRoot()
             }
     ) {
-        // Living 4-color cover-driven fluid mesh aura (adaptive for Light & Dark mode)
+        // Living 4-color cover-driven fluid mesh aura (upgrades to AGSL silk aurora shader in enhanced mode)
         MeshAuraBackground(
             palette = auraPalette,
             isPlaying = playbackState.isPlaying,
             darkTheme = darkTheme,
+            enhanced = visualEffectsEnhanced,
             intensity = when {
                 isImmersiveLyrics -> 0.94f
                 stage == NowPlayingStage.LYRICS -> 0.85f
@@ -478,6 +487,7 @@ fun NowPlayingSheet(
                         lyricDocument = lyricDocument,
                         positionMs = playbackState.positionMs,
                         darkTheme = darkTheme,
+                        visualEffectsEnhanced = visualEffectsEnhanced,
                         artworkAlpha = if (isInternalMorphing) 0f else artworkAlpha,
                         skipDirection = lastSkipDirection,
                         onFullArtworkBoundsChanged = { rect ->
@@ -966,6 +976,7 @@ private fun CoverArtworkStage(
     lyricDocument: LyricDocument,
     positionMs: Long,
     darkTheme: Boolean,
+    visualEffectsEnhanced: Boolean,
     artworkAlpha: Float,
     skipDirection: Int,
     onFullArtworkBoundsChanged: (Rect) -> Unit,
@@ -1093,12 +1104,60 @@ private fun CoverArtworkStage(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        val haloPulse = if (visualEffectsEnhanced && isPlaying) {
+            val transition = rememberInfiniteTransition(label = "cover_halo_pulse")
+            val p by transition.animateFloat(
+                initialValue = 0.82f,
+                targetValue = 1.08f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+                    repeatMode = AnimRepeatMode.Reverse
+                ),
+                label = "halo_pulse_val"
+            )
+            p
+        } else {
+            0.90f
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f),
             contentAlignment = Alignment.Center
         ) {
+            // Enhanced Dynamic Ambient Bloom Halo behind the album cover
+            if (visualEffectsEnhanced && artworkAlpha > 0.05f) {
+                val primaryGlow = Color(auraPalette.primaryHex)
+                val secondaryGlow = Color(auraPalette.secondaryHex)
+                val goldGlow = Color(auraPalette.glowHex)
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .alpha(artworkAlpha)
+                        .graphicsLayer {
+                            scaleX = coverScale * 1.26f * haloPulse
+                            scaleY = coverScale * 1.26f * haloPulse
+                        }
+                ) {
+                    val r = size.maxDimension * 0.62f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                primaryGlow.copy(alpha = if (darkTheme) 0.42f else 0.24f),
+                                secondaryGlow.copy(alpha = if (darkTheme) 0.20f else 0.12f),
+                                goldGlow.copy(alpha = if (darkTheme) 0.08f else 0.04f),
+                                Color.Transparent
+                            ),
+                            center = center,
+                            radius = r
+                        ),
+                        radius = r,
+                        center = center
+                    )
+                }
+            }
+
             AnimatedContent(
                 targetState = track,
                 transitionSpec = {
@@ -1138,10 +1197,10 @@ private fun CoverArtworkStage(
                             }
                         }
                         .shadow(
-                            elevation = shadowElevation,
+                            elevation = if (visualEffectsEnhanced) shadowElevation + 8.dp else shadowElevation,
                             shape = RoundedCornerShape(24.dp),
-                            ambientColor = Color(auraPalette.primaryHex).copy(alpha = if (darkTheme) 0.50f else 0.25f),
-                            spotColor = Color(auraPalette.primaryHex).copy(alpha = if (darkTheme) 0.60f else 0.30f)
+                            ambientColor = Color(auraPalette.primaryHex).copy(alpha = if (darkTheme) 0.55f else 0.28f),
+                            spotColor = Color(auraPalette.primaryHex).copy(alpha = if (darkTheme) 0.68f else 0.34f)
                         )
                 ) {
                     TrackArtwork(
@@ -1151,6 +1210,24 @@ private fun CoverArtworkStage(
                         cornerRadius = 24.dp,
                         modifier = Modifier.fillMaxSize()
                     )
+                    if (visualEffectsEnhanced) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(
+                                    width = 1.dp,
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.White.copy(alpha = if (darkTheme) 0.34f else 0.65f),
+                                            Color.White.copy(alpha = 0.04f),
+                                            Color(auraPalette.glowHex).copy(alpha = if (darkTheme) 0.20f else 0.14f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(24.dp)
+                                )
+                        )
+                    }
                 }
             }
 

@@ -24,20 +24,24 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
@@ -84,6 +88,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.NavBarStyle
 import com.example.model.ScanFilterConfig
+import com.example.ui.components.AmbientAppAuraOverlay
 import com.example.ui.components.ImportConflictDialog
 import com.example.ui.components.LiquidGlassNavBar
 import com.example.ui.components.LiquidGlassNavItem
@@ -92,6 +97,8 @@ import com.example.ui.components.MorphingFloatingArtwork
 import com.example.ui.components.SmartScanConfirmDialog
 import com.example.ui.components.TopStatusToast
 import com.example.ui.components.TopUndoBanner
+import com.example.ui.components.liquidGlassBackdropSource
+import com.example.ui.components.rememberLiquidGlassBackdropState
 import com.example.ui.screens.AiChatScreen
 import com.example.ui.screens.DuplicateManagerSheet
 import com.example.ui.screens.EqualizerSheet
@@ -214,6 +221,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val aiSessionRuntimeStates by viewModel.aiSessionRuntimeStates.collectAsStateWithLifecycle()
     val darkTheme by viewModel.darkTheme.collectAsStateWithLifecycle()
     val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
+    val visualEffectsEnhanced by viewModel.visualEffectsEnhanced.collectAsStateWithLifecycle()
     val showLibraryHero by viewModel.showLibraryHero.collectAsStateWithLifecycle()
     val enableGeneralAudioMode by viewModel.enableGeneralAudioMode.collectAsStateWithLifecycle()
     val deletionGuardMode by viewModel.deletionGuardMode.collectAsStateWithLifecycle()
@@ -411,13 +419,31 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
 
     val currentTrack = playbackState.currentTrack
     val showMiniBarInTab = currentTrack != null && currentTab != MainDestination.AI_STUDIO
-    val miniPlayerExtraBottomDp = if (showMiniBarInTab) 88 else 8
+    val glassBackdropState = rememberLiquidGlassBackdropState()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useNavigationRail = maxWidth >= 600.dp
         val containerWidthPx = with(density) { maxWidth.toPx().coerceAtLeast(1f) }
         val containerHeightPx = with(density) { maxHeight.toPx().coerceAtLeast(1f) }
         val statusBarTopPx = WindowInsets.statusBars.getTop(density).toFloat()
+        val navBarBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp().value.roundToInt() }
+        val isImeVisible = WindowInsets.ime.getBottom(density) > 0
+        val isFloatingGlassNav = !useNavigationRail && navBarStyle == NavBarStyle.FLOATING_GLASS
+        val showFloatingGlassNavNow = isFloatingGlassNav && !(currentTab == MainDestination.AI_STUDIO && isImeVisible)
+        val hasFloatingChrome = (showMiniBarInTab && currentTrack != null) || showFloatingGlassNavNow
+        val recordBackdropForGlass = hasFloatingChrome && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+        // Bottom scroll clearance so content glides smoothly BEHIND transparent floating chrome yet last items stay reachable
+        val scrollableTabBottomPadding = when {
+            useNavigationRail -> navBarBottomDp + if (showMiniBarInTab) 96 else 16
+            isFloatingGlassNav -> navBarBottomDp + 86 + if (showMiniBarInTab) 80 else 0
+            else -> if (showMiniBarInTab) 82 else 16
+        }
+        val aiTabBottomPadding = when {
+            isFloatingGlassNav && !isImeVisible -> navBarBottomDp + 86
+            useNavigationRail -> navBarBottomDp
+            else -> 0
+        }
         val expansion = playerExpansion.value.coerceIn(0f, 1f)
 
         // Deterministic pre-layout cover rect so frame 1 of expand NEVER snaps from Rect.Zero
@@ -496,76 +522,24 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     scaleY = depthScale
                     alpha = lerp(1f, 0.84f, expansion)
                 },
+            containerColor = Color.Transparent,
+            contentWindowInsets = WindowInsets.statusBars,
             bottomBar = {
-                if (!useNavigationRail) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        if (showMiniBarInTab && currentTrack != null) {
-                            val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
-                            MiniPlayerBar(
-                                track = currentTrack,
-                                previousTrack = playbackState.previousTrack,
-                                nextTrack = playbackState.nextTrack,
-                                isPlaying = playbackState.isPlaying,
-                                progressFraction = playbackState.positionMs.toFloat() / dur.toFloat(),
-                                auraPalette = auraPalette,
-                                darkTheme = darkTheme,
-                                artworkAlpha = miniArtAlpha,
-                                onArtworkBoundsChanged = { rect ->
-                                    if (playerExpansion.value < 0.04f) {
-                                        miniArtworkRect = rect
-                                    }
+                if (!useNavigationRail && navBarStyle == NavBarStyle.CLASSIC) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
+                    ) {
+                        MainDestination.entries.forEach { dest ->
+                            NavigationBarItem(
+                                selected = currentTab == dest,
+                                onClick = {
+                                    viewModel.haptics.tickLight()
+                                    currentTab = dest
                                 },
-                                onExpand = {
-                                    viewModel.haptics.springImpact()
-                                    expandNowPlaying()
-                                },
-                                onDragExpandStart = handleMiniDragStart,
-                                onDragExpandDelta = handleMiniDragDelta,
-                                onDragExpandEnd = handleMiniDragEnd,
-                                onTogglePlayPause = { viewModel.togglePlayPause() },
-                                onSkipNext = { viewModel.skipNext() },
-                                onSkipPrevious = { viewModel.skipPrevious() }
+                                icon = { Icon(dest.icon, contentDescription = stringResource(dest.labelRes)) },
+                                label = { Text(stringResource(dest.labelRes)) },
+                                modifier = Modifier.testTag("nav_${dest.name.lowercase()}")
                             )
-                        }
-                        if (navBarStyle == NavBarStyle.FLOATING_GLASS) {
-                            val glassItems = MainDestination.entries.map { dest ->
-                                LiquidGlassNavItem(
-                                    id = dest.name,
-                                    label = stringResource(dest.labelRes),
-                                    icon = dest.icon,
-                                    testTag = "nav_${dest.name.lowercase()}"
-                                )
-                            }
-                            LiquidGlassNavBar(
-                                items = glassItems,
-                                selectedIndex = MainDestination.entries.indexOf(currentTab).coerceAtLeast(0),
-                                darkTheme = darkTheme,
-                                accentColor = RubyAccent,
-                                onSelectIndex = { idx ->
-                                    val target = MainDestination.entries.getOrNull(idx)
-                                    if (target != null) {
-                                        viewModel.haptics.tickLight()
-                                        currentTab = target
-                                    }
-                                }
-                            )
-                        } else {
-                            NavigationBar(
-                                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-                            ) {
-                                MainDestination.entries.forEach { dest ->
-                                    NavigationBarItem(
-                                        selected = currentTab == dest,
-                                        onClick = {
-                                            viewModel.haptics.tickLight()
-                                            currentTab = dest
-                                        },
-                                        icon = { Icon(dest.icon, contentDescription = stringResource(dest.labelRes)) },
-                                        label = { Text(stringResource(dest.labelRes)) },
-                                        modifier = Modifier.testTag("nav_${dest.name.lowercase()}")
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -600,7 +574,24 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                 }
 
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    when (currentTab) {
+                    // Full-bleed scrollable screen backdrop recorded live for transparent Liquid Glass chrome
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background)
+                            .liquidGlassBackdropSource(
+                                state = glassBackdropState,
+                                enabled = recordBackdropForGlass
+                            )
+                    ) {
+                        if (visualEffectsEnhanced) {
+                            AmbientAppAuraOverlay(
+                                palette = auraPalette,
+                                isPlaying = playbackState.isPlaying,
+                                darkTheme = darkTheme
+                            )
+                        }
+                        when (currentTab) {
                         MainDestination.LIBRARY -> LibraryScreen(
                             musicTracks = musicTracks,
                             filteredMusicTracks = filteredTracks,
@@ -644,7 +635,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             duplicateRedundantCount = duplicateGroups.sumOf { it.redundantCount },
                             onOpenDuplicateManager = { showDuplicateManager = true },
                             onOpenAiStudio = ::openAiWorkspace,
-                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                            contentBottomPadding = scrollableTabBottomPadding
                         )
 
                         MainDestination.PLAYLISTS -> PlaylistsScreen(
@@ -679,7 +670,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onClearMostPlayed = viewModel::clearMostPlayedStats,
                             onBurnLyricsToAudio = viewModel::requestBurnLyricsToAudio,
                             onExportTrackLyrics = viewModel::requestExportTrackLyrics,
-                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                            contentBottomPadding = scrollableTabBottomPadding
                         )
 
                         MainDestination.AI_STUDIO -> AiChatScreen(
@@ -737,12 +728,13 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                                 viewModel.playCuratedTracks(titles)
                             },
                             onCopiedNotice = { msg -> viewModel.showBanner(msg) },
-                            contentBottomPadding = 0
+                            contentBottomPadding = aiTabBottomPadding
                         )
 
                         MainDestination.SETTINGS -> SettingsScreen(
                             darkTheme = darkTheme,
                             navBarStyle = navBarStyle,
+                            visualEffectsEnhanced = visualEffectsEnhanced,
                             showLibraryHero = showLibraryHero,
                             enableGeneralAudioMode = enableGeneralAudioMode,
                             deletionGuardMode = deletionGuardMode,
@@ -752,6 +744,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             aiConfig = aiConfig,
                             onSetDarkTheme = viewModel::setDarkTheme,
                             onSetNavBarStyle = viewModel::setNavBarStyle,
+                            onSetVisualEffectsEnhanced = viewModel::setVisualEffectsEnhanced,
                             onSetShowLibraryHero = viewModel::setShowLibraryHero,
                             onSetEnableGeneralAudioMode = viewModel::setEnableGeneralAudioMode,
                             onSetDeletionGuardMode = viewModel::setDeletionGuardMode,
@@ -765,42 +758,93 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onOpenDuplicateManager = { showDuplicateManager = true },
                             onOpenEqualizer = { showEqualizer = true },
                             onOpenAiStudio = ::openAiWorkspace,
-                            contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
+                            contentBottomPadding = scrollableTabBottomPadding
                         )
                     }
+                    }
 
-                    // Tablet / Expanded bottom-docked floating MiniPlayerBar
-                    if (useNavigationRail && showMiniBarInTab && currentTrack != null) {
-                        val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
-                        MiniPlayerBar(
-                            track = currentTrack,
-                            previousTrack = playbackState.previousTrack,
-                            nextTrack = playbackState.nextTrack,
-                            isPlaying = playbackState.isPlaying,
-                            progressFraction = playbackState.positionMs.toFloat() / dur.toFloat(),
-                            auraPalette = auraPalette,
-                            darkTheme = darkTheme,
-                            artworkAlpha = miniArtAlpha,
-                            onArtworkBoundsChanged = { rect ->
-                                if (playerExpansion.value < 0.04f) {
-                                    miniArtworkRect = rect
+                    // Transparent Floating Chrome Overlay (zero opaque backing plate — floats directly over scrolling content)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .then(
+                                if (useNavigationRail || isFloatingGlassNav) {
+                                    Modifier.navigationBarsPadding()
+                                } else {
+                                    Modifier
                                 }
-                            },
-                            onExpand = {
-                                viewModel.haptics.springImpact()
-                                expandNowPlaying()
-                            },
-                            onDragExpandStart = handleMiniDragStart,
-                            onDragExpandDelta = handleMiniDragDelta,
-                            onDragExpandEnd = handleMiniDragEnd,
-                            onTogglePlayPause = { viewModel.togglePlayPause() },
-                            onSkipNext = { viewModel.skipNext() },
-                            onSkipPrevious = { viewModel.skipPrevious() },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .navigationBarsPadding()
-                                .padding(horizontal = 24.dp, vertical = 12.dp)
-                        )
+                            ),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        if (showMiniBarInTab && currentTrack != null) {
+                            val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
+                            MiniPlayerBar(
+                                track = currentTrack,
+                                previousTrack = playbackState.previousTrack,
+                                nextTrack = playbackState.nextTrack,
+                                isPlaying = playbackState.isPlaying,
+                                progressFraction = playbackState.positionMs.toFloat() / dur.toFloat(),
+                                auraPalette = auraPalette,
+                                darkTheme = darkTheme,
+                                backdropState = glassBackdropState,
+                                visualEffectsEnhanced = visualEffectsEnhanced,
+                                artworkAlpha = miniArtAlpha,
+                                onArtworkBoundsChanged = { rect ->
+                                    if (playerExpansion.value < 0.04f) {
+                                        miniArtworkRect = rect
+                                    }
+                                },
+                                onExpand = {
+                                    viewModel.haptics.springImpact()
+                                    expandNowPlaying()
+                                },
+                                onDragExpandStart = handleMiniDragStart,
+                                onDragExpandDelta = handleMiniDragDelta,
+                                onDragExpandEnd = handleMiniDragEnd,
+                                onTogglePlayPause = { viewModel.togglePlayPause() },
+                                onSkipNext = { viewModel.skipNext() },
+                                onSkipPrevious = { viewModel.skipPrevious() },
+                                modifier = if (useNavigationRail) {
+                                    Modifier
+                                        .widthIn(max = 580.dp)
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = showFloatingGlassNavNow,
+                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
+                        ) {
+                            val glassItems = MainDestination.entries.map { dest ->
+                                LiquidGlassNavItem(
+                                    id = dest.name,
+                                    label = stringResource(dest.labelRes),
+                                    icon = dest.icon,
+                                    testTag = "nav_${dest.name.lowercase()}"
+                                )
+                            }
+                            LiquidGlassNavBar(
+                                items = glassItems,
+                                selectedIndex = MainDestination.entries.indexOf(currentTab).coerceAtLeast(0),
+                                darkTheme = darkTheme,
+                                accentColor = RubyAccent,
+                                auraPalette = auraPalette,
+                                backdropState = glassBackdropState,
+                                visualEffectsEnhanced = visualEffectsEnhanced,
+                                onSelectIndex = { idx ->
+                                    val target = MainDestination.entries.getOrNull(idx)
+                                    if (target != null) {
+                                        viewModel.haptics.tickLight()
+                                        currentTab = target
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -824,6 +868,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     lyricSettings = lyricSettings,
                     eqEnabled = eqState.enabled,
                     darkTheme = darkTheme,
+                    visualEffectsEnhanced = visualEffectsEnhanced,
                     artworkAlpha = fullArtAlpha,
                     onActiveArtworkBoundsChanged = { rect, cornerDp ->
                         // Undo live vertical sheet translation so target rect stays pinned at expansion=1f

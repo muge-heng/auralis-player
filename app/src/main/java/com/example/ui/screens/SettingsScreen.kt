@@ -49,10 +49,13 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Vibration
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
@@ -62,6 +65,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -103,6 +107,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     darkTheme: Boolean,
     navBarStyle: NavBarStyle,
+    visualEffectsEnhanced: Boolean = false,
     showLibraryHero: Boolean,
     enableGeneralAudioMode: Boolean,
     deletionGuardMode: DeletionGuardMode = DeletionGuardMode.CONFIRM_DIALOG,
@@ -112,6 +117,7 @@ fun SettingsScreen(
     aiConfig: AiConfig,
     onSetDarkTheme: (Boolean) -> Unit,
     onSetNavBarStyle: (NavBarStyle) -> Unit,
+    onSetVisualEffectsEnhanced: (Boolean) -> Unit = {},
     onSetShowLibraryHero: (Boolean) -> Unit,
     onSetEnableGeneralAudioMode: (Boolean) -> Unit,
     onSetDeletionGuardMode: (DeletionGuardMode) -> Unit = {},
@@ -130,6 +136,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     var newExcludeFolder by remember { mutableStateOf("") }
     var showReleaseNotesSheet by remember { mutableStateOf(false) }
+    var showVisualEnhanceConfirmDialog by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -806,12 +813,12 @@ fun SettingsScreen(
             }
         }
 
-        // Appearance Theme & Navigation Bar Style
+        // Appearance Theme, Transparent Navigation Bar & Visual Effects Engine
         item {
             SettingsCard(
                 icon = Icons.Rounded.DarkMode,
-                title = "视觉主题与导航栏样式",
-                subtitle = "全面适配曜石深色与通透浅色画布，可选 Apple Liquid Glass 悬浮胶囊底栏"
+                title = "视觉主题与光影引擎",
+                subtitle = "悬浮播放条与 Liquid Glass 底栏均已移除固色底板，支持开启旗舰级实时光影增强"
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -877,6 +884,125 @@ fun SettingsScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                    }
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                    thickness = 0.6.dp
+                )
+
+                // Visual Effects Enhancement Toggle (Flagship GPU Optical Glass & Shader Engine)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (visualEffectsEnhanced) RubyAccent.copy(alpha = 0.10f)
+                            else MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                        .border(
+                            width = if (visualEffectsEnhanced) 1.dp else 0.6.dp,
+                            color = if (visualEffectsEnhanced) RubyAccent.copy(alpha = 0.55f)
+                            else MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = if (visualEffectsEnhanced) RubyAccent else ChampagneGold,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "视觉效果增强",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (visualEffectsEnhanced) RubyAccent.copy(alpha = 0.18f)
+                                            else ChampagneGold.copy(alpha = 0.16f)
+                                        )
+                                        .padding(horizontal = 7.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (visualEffectsEnhanced) "旗舰光影已开启" else "旗舰光影",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (visualEffectsEnhanced) RubyAccent else ChampagneGold,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "解锁实时液态玻璃光学折射与色散边缘、全局专辑流光氛围画布、播放页 AGSL 流体极光着色器与封面动态光晕",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = visualEffectsEnhanced,
+                            onCheckedChange = { targetEnabled ->
+                                if (targetEnabled) {
+                                    showVisualEnhanceConfirmDialog = true
+                                } else {
+                                    onSetVisualEffectsEnhanced(false)
+                                }
+                            },
+                            modifier = Modifier.testTag("settings_visual_effects_enhanced_switch")
+                        )
+                    }
+
+                    // Inline Performance & Battery Overhead Advisory
+                    val warningAccent = if (darkTheme) ChampagneGold else Color(0xFFB36B12)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(warningAccent.copy(alpha = if (darkTheme) 0.12f else 0.10f))
+                            .border(
+                                0.6.dp,
+                                warningAccent.copy(alpha = 0.36f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = warningAccent,
+                            modifier = Modifier
+                                .padding(top = 1.dp)
+                                .size(16.dp)
+                        )
+                        Text(
+                            text = "性能提示：开启后将持续运行多通道 GPU 模糊折射、着色器流光与动态光晕，可能带来更高的性能要求、功耗与机身发热，建议中高端及以上设备开启。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -1065,6 +1191,53 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (showVisualEnhanceConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showVisualEnhanceConfirmDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Rounded.AutoAwesome,
+                    contentDescription = null,
+                    tint = RubyAccent
+                )
+            },
+            title = { Text("开启视觉效果增强？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "开启后将激活旗舰级实时光影渲染管线，包含：悬浮播放条与悬浮底栏的液态玻璃光学折射及色散边缘、全局专辑流光氛围画布、播放页 AGSL 流体极光着色器与专辑封面动态光晕。",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "性能与功耗提醒：该模式对 GPU 算力与内存带宽有更高要求，在部分中低端机型或低电量状态下可能出现耗电加快、机身发热或轻微掉帧。你可以随时在「工坊 → 视觉主题与光影引擎」中关闭以切回流畅平衡模式。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showVisualEnhanceConfirmDialog = false
+                        onSetVisualEffectsEnhanced(true)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = RubyAccent,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("confirm_enable_visual_effects_button")
+                ) {
+                    Text("确认开启")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVisualEnhanceConfirmDialog = false }) {
+                    Text("暂不开启")
+                }
+            }
+        )
     }
 
     if (showReleaseNotesSheet) {

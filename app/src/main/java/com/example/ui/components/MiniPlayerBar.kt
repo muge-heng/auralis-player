@@ -2,14 +2,21 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -46,9 +53,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -84,6 +93,8 @@ fun MiniPlayerBar(
     progressFraction: Float,
     auraPalette: AuraPalette,
     darkTheme: Boolean = true,
+    backdropState: LiquidGlassBackdropState? = null,
+    visualEffectsEnhanced: Boolean = false,
     artworkAlpha: Float = 1f,
     onArtworkBoundsChanged: (Rect) -> Unit = {},
     onExpand: () -> Unit,
@@ -109,74 +120,65 @@ fun MiniPlayerBar(
         label = "mini_progress"
     )
     val accent = Color(auraPalette.primaryHex)
+    val glowAccent = Color(auraPalette.glowHex)
     val swipeProgress = (horizontalOffset.value / swipeThresholdPx).coerceIn(-1.2f, 1.2f)
     val absSwipe = abs(swipeProgress)
 
-    // Fade out right-side transport controls quickly during horizontal swipe so they NEVER overlap the swipe preview!
+    // Fade out right-side transport controls quickly during horizontal swipe so they NEVER overlap the swipe preview
     val controlsAlpha = (1f - absSwipe * 2.8f).coerceIn(0f, 1f)
     val contentRowAlpha = (1f - absSwipe * 0.85f).coerceIn(0.18f, 1f)
 
-    // Adaptive Dark & Light Mode studio glass colors
-    val cardBrush = if (darkTheme) {
-        Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFF1A1924).copy(alpha = 0.96f),
-                Color(0xFF211C28).copy(alpha = 0.96f)
-            )
+    // Subtle living aura breath around artwork & progress tip in Visual Effects Enhanced mode
+    val auraPulse = if (visualEffectsEnhanced && isPlaying) {
+        val transition = rememberInfiniteTransition(label = "mini_aura_pulse")
+        val p by transition.animateFloat(
+            initialValue = 0.72f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "mini_pulse"
         )
+        p
     } else {
-        Brush.horizontalGradient(
-            colors = listOf(
-                Color(0xFFFCFCFF).copy(alpha = 0.97f),
-                Color(0xFFF6F4FB).copy(alpha = 0.97f)
-            )
-        )
+        0.78f
     }
 
-    val cardBorderBrush = if (darkTheme) {
-        Brush.horizontalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.16f),
-                accent.copy(alpha = 0.36f),
-                Color.White.copy(alpha = 0.10f)
-            )
-        )
+    val titleInk = if (darkTheme) Color.White else Color(0xFF141422)
+    val subInk = if (darkTheme) Color.White.copy(alpha = 0.74f) else Color(0xFF3E3E54)
+    val textShadow = if (darkTheme) {
+        Shadow(color = Color.Black.copy(alpha = 0.45f), offset = Offset(0f, 1f), blurRadius = 4f)
     } else {
-        Brush.horizontalGradient(
-            listOf(
-                Color.Black.copy(alpha = 0.08f),
-                accent.copy(alpha = 0.30f),
-                Color.Black.copy(alpha = 0.06f)
-            )
-        )
+        Shadow(color = Color.White.copy(alpha = 0.72f), offset = Offset(0f, 1f), blurRadius = 4f)
     }
+    val handleInk = if (darkTheme) Color.White.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.22f)
+    val playBtnBg = if (darkTheme) Color.White.copy(alpha = 0.16f) else accent.copy(alpha = 0.14f)
+    val playBtnBorder = if (darkTheme) Color.White.copy(alpha = 0.24f) else accent.copy(alpha = 0.24f)
+    val playIconTint = if (darkTheme) Color.White else Color(0xFF141422)
+    val nextIconTint = if (darkTheme) Color.White.copy(alpha = 0.90f) else Color(0xFF232334)
+    val trackBg = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.08f)
+    val swipePillBg = if (darkTheme) Color(0xFF161622).copy(alpha = 0.78f) else Color.White.copy(alpha = 0.84f)
+    val swipePillBorder = accent.copy(alpha = if (darkTheme) 0.55f else 0.40f)
 
-    val titleInk = if (darkTheme) Color.White else Color(0xFF151521)
-    val subInk = if (darkTheme) Color.White.copy(alpha = 0.64f) else Color(0xFF5A5A70)
-    val handleInk = if (darkTheme) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.16f)
-    val playBtnBg = if (darkTheme) Color.White.copy(alpha = 0.12f) else accent.copy(alpha = 0.12f)
-    val playIconTint = if (darkTheme) Color.White else Color(0xFF151521)
-    val nextIconTint = if (darkTheme) Color.White.copy(alpha = 0.88f) else Color(0xFF2C2C3A)
-    val trackBg = if (darkTheme) Color.White.copy(alpha = 0.09f) else Color.Black.copy(alpha = 0.07f)
-    val swipePillBg = if (darkTheme) Color(0xFF14131D).copy(alpha = 0.92f) else Color.White.copy(alpha = 0.95f)
-    val swipePillBorder = accent.copy(alpha = if (darkTheme) 0.45f else 0.35f)
-
-    Box(
+    LiquidGlassSurface(
+        backdropState = backdropState,
+        cornerRadius = 24.dp,
+        darkTheme = darkTheme,
+        accentColor = accent,
+        visualEffectsEnhanced = visualEffectsEnhanced,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .shadow(
-                elevation = if (darkTheme) 20.dp else 14.dp,
-                shape = RoundedCornerShape(22.dp),
-                ambientColor = if (darkTheme) accent.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.16f),
-                spotColor = if (darkTheme) accent.copy(alpha = 0.45f) else accent.copy(alpha = 0.22f)
-            )
-            .clip(RoundedCornerShape(22.dp))
-            .background(cardBrush)
-            .border(
-                width = 0.85.dp,
-                brush = cardBorderBrush,
-                shape = RoundedCornerShape(22.dp)
+                elevation = if (visualEffectsEnhanced) {
+                    if (darkTheme) 22.dp else 16.dp
+                } else {
+                    if (darkTheme) 14.dp else 10.dp
+                },
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.42f else 0.24f) else Color.Black.copy(alpha = 0.14f),
+                spotColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.52f else 0.30f) else accent.copy(alpha = 0.20f)
             )
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -301,8 +303,26 @@ fun MiniPlayerBar(
                                 .onGloballyPositioned { coords ->
                                     onArtworkBoundsChanged(coords.boundsInRoot())
                                 }
-                                .alpha(artworkAlpha)
+                                .alpha(artworkAlpha),
+                            contentAlignment = Alignment.Center
                         ) {
+                            if (visualEffectsEnhanced) {
+                                Canvas(modifier = Modifier.matchParentSize()) {
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                accent.copy(alpha = 0.50f * auraPulse),
+                                                glowAccent.copy(alpha = 0.16f * auraPulse),
+                                                Color.Transparent
+                                            ),
+                                            center = center,
+                                            radius = size.maxDimension * 0.86f
+                                        ),
+                                        radius = size.maxDimension * 0.86f,
+                                        center = center
+                                    )
+                                }
+                            }
                             TrackArtwork(
                                 artworkPath = track.artworkPath,
                                 albumArtUri = track.albumArtUri,
@@ -336,7 +356,7 @@ fun MiniPlayerBar(
                                 ) {
                                     Text(
                                         text = activeTrack.title,
-                                        style = MaterialTheme.typography.titleSmall,
+                                        style = MaterialTheme.typography.titleSmall.copy(shadow = textShadow),
                                         color = titleInk,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -353,7 +373,7 @@ fun MiniPlayerBar(
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "${activeTrack.artist} · ${activeTrack.album}",
-                                    style = MaterialTheme.typography.bodySmall,
+                                    style = MaterialTheme.typography.bodySmall.copy(shadow = textShadow),
                                     color = subInk,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -377,6 +397,7 @@ fun MiniPlayerBar(
                                 .size(44.dp)
                                 .clip(CircleShape)
                                 .background(playBtnBg)
+                                .border(0.75.dp, playBtnBorder, CircleShape)
                                 .bouncyClickable(enabled = controlsAlpha > 0.4f, onClick = onTogglePlayPause)
                                 .testTag("mini_play_pause"),
                             contentAlignment = Alignment.Center
@@ -479,23 +500,45 @@ fun MiniPlayerBar(
                 }
             }
 
-            // Ultra-fine glowing acoustic progress hairline
+            // Ultra-fine glowing acoustic progress hairline (+ luminous tip bloom when enhanced)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.5.dp)
+                    .height(if (visualEffectsEnhanced) 3.dp else 2.5.dp)
                     .background(trackBg)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(animatedProgress)
-                        .height(2.5.dp)
+                        .height(if (visualEffectsEnhanced) 3.dp else 2.5.dp)
                         .background(
                             Brush.horizontalGradient(
-                                listOf(accent, Color(auraPalette.glowHex))
+                                listOf(accent, glowAccent)
                             )
                         )
                 )
+                if (visualEffectsEnhanced && animatedProgress > 0.01f) {
+                    Canvas(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp)
+                    ) {
+                        val tipX = (size.width * animatedProgress).coerceIn(2f, size.width)
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.92f * auraPulse),
+                                    glowAccent.copy(alpha = 0.55f * auraPulse),
+                                    Color.Transparent
+                                ),
+                                center = Offset(tipX, size.height * 0.5f),
+                                radius = 16f
+                            ),
+                            radius = 16f,
+                            center = Offset(tipX, size.height * 0.5f)
+                        )
+                    }
+                }
             }
         }
     }

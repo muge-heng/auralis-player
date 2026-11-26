@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.3"
-    const val PREVIOUS_VERSION = "0.9.2"
+    const val CURRENT_VERSION = "0.9.4"
+    const val PREVIOUS_VERSION = "0.9.3"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,18 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.3",
+            version = "0.9.4",
             tag = "当前版本",
+            title = "全透明悬浮液态玻璃架构 · 旗舰视觉效果增强引擎",
+            highlights = listOf(
+                "彻底移除悬浮歌曲播放条与 Liquid Glass 悬浮底栏背后的黑色/白色固定底板，改为全屏透底流淌布局与实时 GPU 毛玻璃透视背景，滑动列表与专辑封面可自然从悬浮条下方流过。",
+                "新增「视觉效果增强（旗舰光影引擎）」开关（含性能与功耗提醒）：开启后激活 Android 13+ AGSL 液态玻璃光学边缘折射与色散、全局专辑流光氛围画布、播放页实时流体极光着色器、封面呼吸光晕与进度条流光脉冲。",
+                "适配全透明悬浮层级的批量管理栏与 AI 聊天输入法避让动效，确保深浅双主题下字迹清晰锐利且零遮挡。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.3",
+            tag = "历史版本",
             title = "顶部可划走轻提示 · 大幅精简通知频次 · 设置排布精修",
             highlights = listOf(
                 "移除底部白底且无法划走的原生提示条，全面替换为顶部悬浮轻量提示卡片：深浅主题自适应、支持左右或上滑手势随时划走，彻底杜绝遮挡底栏、迷你播放器与 AI 输入区。",

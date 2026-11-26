@@ -158,6 +158,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     val navBarStyle: StateFlow<NavBarStyle> = prefs.navBarStyleFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NavBarStyle.CLASSIC)
 
+    val visualEffectsEnhanced: StateFlow<Boolean> = prefs.visualEffectsEnhancedFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     val showLibraryHero: StateFlow<Boolean> = prefs.showLibraryHeroFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
@@ -1818,6 +1821,10 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun setNavBarStyle(style: NavBarStyle) = viewModelScope.launch {
         haptics.tickLight()
         prefs.setNavBarStyle(style)
+    }
+    fun setVisualEffectsEnhanced(enabled: Boolean) = viewModelScope.launch {
+        haptics.springImpact()
+        prefs.setVisualEffectsEnhanced(enabled)
     }
     fun setShowLibraryHero(show: Boolean) = viewModelScope.launch {
         haptics.tickLight()

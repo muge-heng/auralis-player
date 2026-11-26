@@ -505,16 +505,52 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 4)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 5)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
+    }
+
+    @Test
+    fun glassVisualProfileScalesTransparencyBlurAndAgslRefractionProperly() {
+        val standardBlurDark = com.example.ui.components.computeGlassVisualProfile(
+            darkTheme = true,
+            enhanced = false,
+            supportsHardwareBlur = true,
+            supportsAgslShader = true
+        )
+        assertTrue(standardBlurDark.useBackdropBlur)
+        assertFalse(standardBlurDark.useAgslRefraction)
+        assertTrue(standardBlurDark.veilTopAlpha < 0.4f)
+
+        val enhancedAgslDark = com.example.ui.components.computeGlassVisualProfile(
+            darkTheme = true,
+            enhanced = true,
+            supportsHardwareBlur = true,
+            supportsAgslShader = true
+        )
+        assertTrue(enhancedAgslDark.useBackdropBlur)
+        assertTrue(enhancedAgslDark.useAgslRefraction)
+        assertTrue(enhancedAgslDark.blurRadiusDp > standardBlurDark.blurRadiusDp)
+        assertTrue(enhancedAgslDark.veilTopAlpha < standardBlurDark.veilTopAlpha)
+        assertTrue(enhancedAgslDark.refractionPx > 0f)
+
+        val legacyFallback = com.example.ui.components.computeGlassVisualProfile(
+            darkTheme = false,
+            enhanced = true,
+            supportsHardwareBlur = false,
+            supportsAgslShader = false
+        )
+        assertFalse(legacyFallback.useBackdropBlur)
+        assertFalse(legacyFallback.useAgslRefraction)
+        assertTrue(legacyFallback.veilBottomAlpha < 0.70f)
     }
 
     @Test

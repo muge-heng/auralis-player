@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,14 +31,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.AuraPalette
 import kotlin.math.roundToInt
 
 data class LiquidGlassNavItem(
@@ -50,9 +52,9 @@ data class LiquidGlassNavItem(
 )
 
 /**
- * Apple iOS 26-inspired Floating Liquid Glass 4-Tab Navigation Capsule.
- * Renders a floating translucent pill with specular top rim refraction,
- * adaptive light/dark glass chemistry, and a spring-gliding active glass lens.
+ * Apple iOS 26-inspired Floating Transparent Liquid Glass 4-Tab Navigation Capsule.
+ * Renders a completely transparent floating pill over full-bleed scrolling content
+ * with real-time GPU backdrop blur/refraction, specular rim gleam, and a spring-gliding glass lens.
  */
 @Composable
 fun LiquidGlassNavBar(
@@ -60,6 +62,9 @@ fun LiquidGlassNavBar(
     selectedIndex: Int,
     darkTheme: Boolean,
     accentColor: Color,
+    auraPalette: AuraPalette = AuraPalette(),
+    backdropState: LiquidGlassBackdropState? = null,
+    visualEffectsEnhanced: Boolean = false,
     onSelectIndex: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -76,90 +81,88 @@ fun LiquidGlassNavBar(
 
     val capsuleShape = RoundedCornerShape(32.dp)
     val pillShape = RoundedCornerShape(26.dp)
-
-    val glassSurfaceBrush = if (darkTheme) {
-        Brush.verticalGradient(
-            listOf(
-                Color(0xFF282838).copy(alpha = 0.86f),
-                Color(0xFF171722).copy(alpha = 0.92f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.90f),
-                Color(0xFFF3F3F9).copy(alpha = 0.84f)
-            )
-        )
-    }
-
-    val specularBorderBrush = if (darkTheme) {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.34f),
-                Color.White.copy(alpha = 0.10f),
-                Color.White.copy(alpha = 0.20f)
-            )
-        )
-    } else {
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.98f),
-                Color.Black.copy(alpha = 0.08f),
-                Color.White.copy(alpha = 0.65f)
-            )
-        )
-    }
+    val dynamicAuraAccent = Color(auraPalette.primaryHex)
 
     val activeLensBrush = if (darkTheme) {
         Brush.verticalGradient(
             listOf(
-                Color.White.copy(alpha = 0.24f),
-                accentColor.copy(alpha = 0.20f)
+                Color.White.copy(alpha = if (visualEffectsEnhanced) 0.28f else 0.22f),
+                (if (visualEffectsEnhanced) dynamicAuraAccent else accentColor).copy(
+                    alpha = if (visualEffectsEnhanced) 0.28f else 0.18f
+                )
             )
         )
     } else {
         Brush.verticalGradient(
             listOf(
-                accentColor.copy(alpha = 0.16f),
-                accentColor.copy(alpha = 0.08f)
+                Color.White.copy(alpha = if (visualEffectsEnhanced) 0.76f else 0.64f),
+                (if (visualEffectsEnhanced) dynamicAuraAccent else accentColor).copy(
+                    alpha = if (visualEffectsEnhanced) 0.18f else 0.12f
+                )
             )
         )
     }
 
     val activeLensBorder = if (darkTheme) {
-        Color.White.copy(alpha = 0.32f)
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = if (visualEffectsEnhanced) 0.50f else 0.36f),
+                (if (visualEffectsEnhanced) dynamicAuraAccent else accentColor).copy(alpha = 0.28f)
+            )
+        )
     } else {
-        accentColor.copy(alpha = 0.28f)
+        Brush.verticalGradient(
+            listOf(
+                Color.White.copy(alpha = 0.96f),
+                accentColor.copy(alpha = 0.30f)
+            )
+        )
     }
 
     val activeTint = if (darkTheme) Color.White else accentColor
-    val inactiveTint = if (darkTheme) Color.White.copy(alpha = 0.56f) else Color(0xFF4C4C5C)
+    val inactiveTint = if (darkTheme) Color.White.copy(alpha = 0.66f) else Color(0xFF3A3A4E)
+    val labelShadow = if (darkTheme) {
+        Shadow(color = Color.Black.copy(alpha = 0.42f), offset = Offset(0f, 1f), blurRadius = 3f)
+    } else {
+        Shadow(color = Color.White.copy(alpha = 0.75f), offset = Offset(0f, 1f), blurRadius = 3f)
+    }
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
             .padding(horizontal = 18.dp, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
-        Box(
+        LiquidGlassSurface(
+            backdropState = backdropState,
+            cornerRadius = 32.dp,
+            darkTheme = darkTheme,
+            accentColor = if (visualEffectsEnhanced) dynamicAuraAccent else accentColor,
+            visualEffectsEnhanced = visualEffectsEnhanced,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(64.dp)
                 .shadow(
-                    elevation = if (darkTheme) 24.dp else 18.dp,
+                    elevation = if (visualEffectsEnhanced) {
+                        if (darkTheme) 24.dp else 18.dp
+                    } else {
+                        if (darkTheme) 16.dp else 12.dp
+                    },
                     shape = capsuleShape,
-                    ambientColor = if (darkTheme) Color.Black.copy(alpha = 0.55f) else Color.Black.copy(alpha = 0.16f),
-                    spotColor = if (darkTheme) accentColor.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.14f)
+                    ambientColor = if (darkTheme) Color.Black.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.14f),
+                    spotColor = if (darkTheme) {
+                        (if (visualEffectsEnhanced) dynamicAuraAccent else accentColor).copy(alpha = 0.30f)
+                    } else {
+                        Color.Black.copy(alpha = 0.12f)
+                    }
                 )
-                .clip(capsuleShape)
-                .background(glassSurfaceBrush)
-                .border(width = 1.dp, brush = specularBorderBrush, shape = capsuleShape)
-                .padding(5.dp)
                 .testTag("liquid_glass_nav_bar")
         ) {
-            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(5.dp)
+            ) {
                 val slotWidth = maxWidth / items.size
                 val slotWidthPx = constraints.maxWidth.toFloat() / items.size.toFloat()
 
@@ -171,7 +174,7 @@ fun LiquidGlassNavBar(
                         .fillMaxHeight()
                         .clip(pillShape)
                         .background(activeLensBrush)
-                        .border(0.85.dp, activeLensBorder, pillShape)
+                        .border(0.9.dp, activeLensBorder, pillShape)
                 )
 
                 Row(
@@ -186,7 +189,7 @@ fun LiquidGlassNavBar(
                             label = "glass_tab_tint_$idx"
                         )
                         val iconScale by animateFloatAsState(
-                            targetValue = if (selected) 1.08f else 0.96f,
+                            targetValue = if (selected) 1.09f else 0.96f,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioMediumBouncy,
                                 stiffness = Spring.StiffnessMedium
@@ -217,7 +220,8 @@ fun LiquidGlassNavBar(
                                 text = item.label,
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 11.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    shadow = labelShadow
                                 ),
                                 color = tint,
                                 maxLines = 1
