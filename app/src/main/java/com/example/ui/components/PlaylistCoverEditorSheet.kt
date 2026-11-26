@@ -63,7 +63,7 @@ import com.example.model.PlaylistCoverConfig
 import com.example.model.PlaylistCoverMode
 import com.example.model.Track
 import com.example.ui.theme.AuraViolet
-import com.example.ui.theme.ChampagneGold
+import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
 import kotlin.random.Random
@@ -263,7 +263,7 @@ fun PlaylistCoverEditorSheet(
                     Text(
                         text = previewSummary,
                         style = MaterialTheme.typography.labelSmall,
-                        color = ChampagneGold,
+                        color = adaptiveGoldColor(),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

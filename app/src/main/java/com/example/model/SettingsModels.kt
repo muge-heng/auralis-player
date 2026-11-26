@@ -67,8 +67,8 @@ enum class ReasoningEffortLevel(
 }
 
 enum class NavBarStyle(val label: String, val subtitle: String) {
-    CLASSIC("经典底栏", "标准 Material 3 贴底四段式导航栏"),
-    FLOATING_GLASS("Liquid Glass 底栏", "全透明悬浮玻璃胶囊，移除底板透底流淌")
+    FLOATING_GLASS("Liquid Glass 底栏", "全透明悬浮玻璃胶囊，支持按住拖动跟手切换（默认）"),
+    CLASSIC("经典底栏", "标准 Material 3 贴底四段式导航栏")
 }
 
 data class ScanFilterConfig(

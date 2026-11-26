@@ -12,7 +12,10 @@ val ObsidianOutline = Color(0xFF2E2E3F)
 // Signature Acoustic Accents (Apple Music Ruby-Coral + Champagne Gold)
 val RubyAccent = Color(0xFFFA2D48)
 val RubyGlow = Color(0xFFFF5C72)
-val ChampagneGold = Color(0xFFF0C28A)
+val ChampagneGold = Color(0xFFF0C28A)       // Luminous champagne gold on dark surfaces
+val ChampagneGoldLight = Color(0xFFA66000)  // Deep burnished golden-amber for crisp contrast on light surfaces
+val AmberAccentDark = Color(0xFFF59E0B)     // Vivid amber on dark surfaces
+val AmberAccentLight = Color(0xFFB45309)    // Deep rich amber on light surfaces
 val AuraViolet = Color(0xFF7B61FF)
 val EmeraldLossless = Color(0xFF34D399)
 

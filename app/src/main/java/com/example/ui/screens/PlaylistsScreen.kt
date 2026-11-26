@@ -32,9 +32,12 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Checklist
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
@@ -92,9 +95,9 @@ import com.example.ui.components.bouncyClickable
 import com.example.ui.components.buildArtistAutoPlaylists
 import com.example.ui.components.formatCollectionTotalDuration
 import com.example.ui.theme.AuraViolet
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 private sealed interface ActiveCollectionKey {
     data object Favorites : ActiveCollectionKey
@@ -309,7 +312,7 @@ fun PlaylistsScreen(
                 val heroAccent = when (activeKey) {
                     ActiveCollectionKey.Favorites -> RubyAccent
                     ActiveCollectionKey.Recent -> AuraViolet
-                    ActiveCollectionKey.MostPlayed -> ChampagneGold
+                    ActiveCollectionKey.MostPlayed -> adaptiveGoldColor()
                     is ActiveCollectionKey.Artist -> EmeraldLossless
                     is ActiveCollectionKey.Custom -> RubyAccent
                     ActiveCollectionKey.ArtistsDirectory -> RubyAccent
@@ -408,7 +411,7 @@ fun PlaylistsScreen(
                                                 Icon(
                                                     Icons.Rounded.Edit,
                                                     contentDescription = "编辑歌单名与简介",
-                                                    tint = ChampagneGold
+                                                    tint = adaptiveGoldColor()
                                                 )
                                             }
                                         }
@@ -431,7 +434,8 @@ fun PlaylistsScreen(
                                                             Icon(
                                                                 imageVector = Icons.Rounded.PhotoLibrary,
                                                                 contentDescription = null,
-                                                                tint = heroAccent
+                                                                tint = heroAccent,
+                                                                modifier = Modifier.size(16.dp)
                                                             )
                                                         },
                                                         onClick = {
@@ -450,6 +454,14 @@ fun PlaylistsScreen(
                                                 if (collectionTracks.isNotEmpty()) {
                                                     DropdownMenuItem(
                                                         text = { Text("随机播放此列表") },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.Shuffle,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        },
                                                         onClick = {
                                                             detailMenuExpanded = false
                                                             onPlayAll(collectionTracks, true)
@@ -457,6 +469,14 @@ fun PlaylistsScreen(
                                                     )
                                                     DropdownMenuItem(
                                                         text = { Text("全部加入待播队列") },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.QueueMusic,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        },
                                                         onClick = {
                                                             detailMenuExpanded = false
                                                             onAppendToQueue(collectionTracks)
@@ -467,6 +487,14 @@ fun PlaylistsScreen(
                                                     is ActiveCollectionKey.Custom -> {
                                                         DropdownMenuItem(
                                                             text = { Text("从曲库批量加歌") },
+                                                            leadingIcon = {
+                                                                Icon(
+                                                                    imageVector = Icons.Rounded.Add,
+                                                                    contentDescription = null,
+                                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            },
                                                             onClick = {
                                                                 detailMenuExpanded = false
                                                                 showTrackSelectorForPlaylistId = activeKey.playlistId
@@ -474,6 +502,14 @@ fun PlaylistsScreen(
                                                         )
                                                         DropdownMenuItem(
                                                             text = { Text("编辑歌单名与介绍") },
+                                                            leadingIcon = {
+                                                                Icon(
+                                                                    imageVector = Icons.Rounded.Edit,
+                                                                    contentDescription = null,
+                                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            },
                                                             onClick = {
                                                                 detailMenuExpanded = false
                                                                 renameTarget = customPlaylist
@@ -484,6 +520,14 @@ fun PlaylistsScreen(
                                                         if (collectionTracks.isNotEmpty()) {
                                                             DropdownMenuItem(
                                                                 text = { Text("一键清空歌单", color = RubyAccent) },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.Rounded.DeleteSweep,
+                                                                        contentDescription = null,
+                                                                        tint = RubyAccent,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
                                                                     onClearPlaylist(activeKey.playlistId)
@@ -492,6 +536,14 @@ fun PlaylistsScreen(
                                                         }
                                                         DropdownMenuItem(
                                                             text = { Text("删除此歌单", color = RubyAccent) },
+                                                            leadingIcon = {
+                                                                Icon(
+                                                                    imageVector = Icons.Rounded.DeleteOutline,
+                                                                    contentDescription = null,
+                                                                    tint = RubyAccent,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            },
                                                             onClick = {
                                                                 detailMenuExpanded = false
                                                                 onDeletePlaylist(activeKey.playlistId) {
@@ -504,6 +556,14 @@ fun PlaylistsScreen(
                                                         if (collectionTracks.isNotEmpty()) {
                                                             DropdownMenuItem(
                                                                 text = { Text("取消全部红心", color = RubyAccent) },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.Rounded.DeleteSweep,
+                                                                        contentDescription = null,
+                                                                        tint = RubyAccent,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
                                                                     onClearAllFavorites(collectionTracks.map { it.id })
@@ -515,6 +575,14 @@ fun PlaylistsScreen(
                                                         if (collectionTracks.isNotEmpty()) {
                                                             DropdownMenuItem(
                                                                 text = { Text("清空最近聆听记录", color = RubyAccent) },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.Rounded.DeleteSweep,
+                                                                        contentDescription = null,
+                                                                        tint = RubyAccent,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
                                                                     onClearRecentHistory()
@@ -526,6 +594,14 @@ fun PlaylistsScreen(
                                                         if (collectionTracks.isNotEmpty()) {
                                                             DropdownMenuItem(
                                                                 text = { Text("重置循环播放统计", color = RubyAccent) },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.Rounded.DeleteSweep,
+                                                                        contentDescription = null,
+                                                                        tint = RubyAccent,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
                                                                     onClearMostPlayed()
@@ -537,6 +613,14 @@ fun PlaylistsScreen(
                                                         if (collectionTracks.isNotEmpty()) {
                                                             DropdownMenuItem(
                                                                 text = { Text("将此歌手曲目存为歌单") },
+                                                                leadingIcon = {
+                                                                    Icon(
+                                                                        imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                                                        contentDescription = null,
+                                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                        modifier = Modifier.size(16.dp)
+                                                                    )
+                                                                },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
                                                                     val defaultTitle = "${collectionTitle}精选"
@@ -627,16 +711,17 @@ fun PlaylistsScreen(
                                                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f))
                                                 .padding(horizontal = 10.dp, vertical = 4.dp)
                                         ) {
+                                            val addDescGold = adaptiveGoldColor()
                                             Icon(
                                                 Icons.Rounded.Edit,
                                                 contentDescription = null,
-                                                tint = ChampagneGold,
+                                                tint = addDescGold,
                                                 modifier = Modifier.size(13.dp)
                                             )
                                             Text(
                                                 text = "点击添加歌单介绍",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = ChampagneGold
+                                                color = addDescGold
                                             )
                                         }
                                     }
@@ -828,7 +913,7 @@ fun PlaylistsScreen(
                                             Text(
                                                 text = "已选 ${selectedTracks.size} 首",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = ChampagneGold,
+                                                color = adaptiveGoldColor(),
                                                 modifier = Modifier.padding(start = 4.dp)
                                             )
                                         }
@@ -911,6 +996,14 @@ fun PlaylistsScreen(
                                                 if (index > 0) {
                                                     DropdownMenuItem(
                                                         text = { Text("上移一位") },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.ArrowUpward,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        },
                                                         onClick = {
                                                             dismiss()
                                                             onMovePlaylistTrack(activeKey.playlistId, index, index - 1)
@@ -920,6 +1013,14 @@ fun PlaylistsScreen(
                                                 if (index < collectionTracks.lastIndex) {
                                                     DropdownMenuItem(
                                                         text = { Text("下移一位") },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                imageVector = Icons.Rounded.ArrowDownward,
+                                                                contentDescription = null,
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        },
                                                         onClick = {
                                                             dismiss()
                                                             onMovePlaylistTrack(activeKey.playlistId, index, index + 1)
@@ -928,6 +1029,14 @@ fun PlaylistsScreen(
                                                 }
                                                 DropdownMenuItem(
                                                     text = { Text("从此歌单移出", color = RubyAccent) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Rounded.DeleteOutline,
+                                                            contentDescription = null,
+                                                            tint = RubyAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    },
                                                     onClick = {
                                                         dismiss()
                                                         onRemoveFromPlaylist(activeKey.playlistId, listOf(track.id))
@@ -937,6 +1046,14 @@ fun PlaylistsScreen(
                                             ActiveCollectionKey.Recent -> {
                                                 DropdownMenuItem(
                                                     text = { Text("从最近聆听移出", color = RubyAccent) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = Icons.Rounded.DeleteOutline,
+                                                            contentDescription = null,
+                                                            tint = RubyAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    },
                                                     onClick = {
                                                         dismiss()
                                                         onRemoveFromRecent(listOf(track.id))
@@ -1526,7 +1643,7 @@ private fun PlaylistsOverviewContent(
                         Text(
                             text = "${item.trackCount} 首曲目" + if (plTracks.isNotEmpty()) " · $durationStr" else " · 暂未添加曲目",
                             style = MaterialTheme.typography.labelSmall,
-                            color = ChampagneGold.copy(alpha = 0.9f),
+                            color = adaptiveGoldColor().copy(alpha = 0.92f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1564,6 +1681,14 @@ private fun PlaylistsOverviewContent(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("从曲库快速加歌") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
                                 onClick = {
                                     rowMenuExpanded = false
                                     onQuickAddTracks(item.playlist.id)
@@ -1572,6 +1697,14 @@ private fun PlaylistsOverviewContent(
                             if (plTracks.isNotEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("随机播放全部") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Shuffle,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
                                     onClick = {
                                         rowMenuExpanded = false
                                         onPlayAll(plTracks, true)
@@ -1579,6 +1712,14 @@ private fun PlaylistsOverviewContent(
                                 )
                                 DropdownMenuItem(
                                     text = { Text("全部加入待播队列") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.QueueMusic,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
                                     onClick = {
                                         rowMenuExpanded = false
                                         onAppendToQueue(plTracks)
@@ -1592,7 +1733,8 @@ private fun PlaylistsOverviewContent(
                                         Icon(
                                             imageVector = Icons.Rounded.PhotoLibrary,
                                             contentDescription = null,
-                                            tint = RubyAccent
+                                            tint = RubyAccent,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     },
                                     onClick = {
@@ -1603,6 +1745,14 @@ private fun PlaylistsOverviewContent(
                             }
                             DropdownMenuItem(
                                 text = { Text("编辑歌单名与介绍") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Edit,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
                                 onClick = {
                                     rowMenuExpanded = false
                                     onEditPlaylist(item)
@@ -1611,6 +1761,14 @@ private fun PlaylistsOverviewContent(
                             if (plTracks.isNotEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("一键清空歌单", color = RubyAccent) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Rounded.DeleteSweep,
+                                            contentDescription = null,
+                                            tint = RubyAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
                                     onClick = {
                                         rowMenuExpanded = false
                                         onRequestClearPlaylist(item)
@@ -1619,6 +1777,14 @@ private fun PlaylistsOverviewContent(
                             }
                             DropdownMenuItem(
                                 text = { Text("删除歌单", color = RubyAccent) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Rounded.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = RubyAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
                                 onClick = {
                                     rowMenuExpanded = false
                                     onRequestDeletePlaylist(item)

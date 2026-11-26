@@ -226,6 +226,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
     val visualEffectsEnhanced by viewModel.visualEffectsEnhanced.collectAsStateWithLifecycle()
     val showLibraryHero by viewModel.showLibraryHero.collectAsStateWithLifecycle()
+    val showGeneralAudioNotice by viewModel.showGeneralAudioNotice.collectAsStateWithLifecycle()
     val enableGeneralAudioMode by viewModel.enableGeneralAudioMode.collectAsStateWithLifecycle()
     val deletionGuardMode by viewModel.deletionGuardMode.collectAsStateWithLifecycle()
     val hapticProfile by viewModel.hapticProfile.collectAsStateWithLifecycle()
@@ -584,15 +585,18 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                 }
 
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    // Full-bleed scrollable screen backdrop recorded live for transparent Liquid Glass chrome
+                    // Full-bleed scrollable screen backdrop recorded live for transparent Liquid Glass chrome.
+                    // CRITICAL: liquidGlassBackdropSource MUST wrap .background(...) so the opaque theme
+                    // canvas is recorded inside contentLayer, preventing transparent (0,0,0,0) regions from
+                    // turning black during GPU blur/AGSL refraction in light mode!
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background)
                             .liquidGlassBackdropSource(
                                 state = glassBackdropState,
                                 enabled = recordBackdropForGlass
                             )
+                            .background(MaterialTheme.colorScheme.background)
                     ) {
                         if (visualEffectsEnhanced) {
                             AmbientAppAuraOverlay(
@@ -608,6 +612,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             generalAudioTracks = generalAudioTracks,
                             filteredGeneralAudioTracks = filteredGeneralAudioTracks,
                             showHeroBanner = showLibraryHero,
+                            showGeneralAudioNotice = showGeneralAudioNotice,
                             enableGeneralAudioMode = enableGeneralAudioMode,
                             currentTrackId = currentTrack?.id,
                             isPlaying = playbackState.isPlaying,
@@ -627,6 +632,9 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onHideHeroBanner = {
                                 viewModel.haptics.tickLight()
                                 viewModel.setShowLibraryHero(false)
+                            },
+                            onDismissGeneralAudioNotice = {
+                                viewModel.setShowGeneralAudioNotice(false)
                             },
                             onSetTracksGeneralAudio = viewModel::setTracksGeneralAudio,
                             onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
@@ -851,6 +859,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                                 auraPalette = auraPalette,
                                 backdropState = glassBackdropState,
                                 visualEffectsEnhanced = visualEffectsEnhanced,
+                                onHoverTick = { viewModel.haptics.tickLight() },
                                 onSelectIndex = { idx ->
                                     val target = MainDestination.entries.getOrNull(idx)
                                     if (target != null) {

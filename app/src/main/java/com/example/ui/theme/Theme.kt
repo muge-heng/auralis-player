@@ -6,8 +6,45 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.example.model.LyricSource
+
+val LocalAuralisDarkTheme = staticCompositionLocalOf { true }
+
+/**
+ * Theme-adaptive signature gold accent:
+ * - Dark mode: luminous ChampagneGold (#F0C28A)
+ * - Light mode: deep burnished golden-amber (#A66000) with crisp readability on light surfaces
+ */
+@Composable
+@ReadOnlyComposable
+fun adaptiveGoldColor(): Color =
+    if (LocalAuralisDarkTheme.current) ChampagneGold else ChampagneGoldLight
+
+/**
+ * Theme-adaptive vivid amber accent (e.g., XHIGH reasoning tier, warm warning highlights).
+ */
+@Composable
+@ReadOnlyComposable
+fun adaptiveAmberColor(): Color =
+    if (LocalAuralisDarkTheme.current) AmberAccentDark else AmberAccentLight
+
+/**
+ * Theme-adaptive lyric provider chip/badge ink so light mode never renders washed-out pale yellow/pastel labels.
+ */
+@Composable
+@ReadOnlyComposable
+fun adaptiveLyricSourceColor(source: LyricSource): Color = when {
+    source == LyricSource.ALL -> adaptiveGoldColor()
+    !LocalAuralisDarkTheme.current && source == LyricSource.QQ_MUSIC -> Color(0xFF158A52)
+    !LocalAuralisDarkTheme.current && source == LyricSource.KUGOU -> Color(0xFF0E74D1)
+    !LocalAuralisDarkTheme.current && source == LyricSource.LRCLIB -> Color(0xFF6D4AD8)
+    else -> Color(source.accentHex)
+}
 
 private val AuralisDarkColorScheme = darkColorScheme(
     primary = RubyAccent,
@@ -44,10 +81,10 @@ private val AuralisLightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = Color(0xFFFFE4E8),
     onPrimaryContainer = Color(0xFF5A0013),
-    secondary = Color(0xFF9A6830),
+    secondary = ChampagneGoldLight,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFFFEDD6),
-    onSecondaryContainer = Color(0xFF3A2200),
+    secondaryContainer = Color(0xFFF1E2C8),
+    onSecondaryContainer = Color(0xFF3E2300),
     tertiary = Color(0xFF5A42D4),
     onTertiary = Color.White,
     background = AlabasterCanvas,
@@ -79,10 +116,12 @@ fun AuralisTheme(
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) AuralisDarkColorScheme else AuralisLightColorScheme
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = AuralisTypography,
-        shapes = AuralisShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalAuralisDarkTheme provides darkTheme) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = AuralisTypography,
+            shapes = AuralisShapes,
+            content = content
+        )
+    }
 }

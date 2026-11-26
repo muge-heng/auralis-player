@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.PlaylistWithCount
 import com.example.model.Track
-import com.example.ui.theme.ChampagneGold
+import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.EmeraldLossless
 
 @Composable
@@ -197,7 +197,7 @@ fun BatchPlaylistPickerDialog(
                                 Icon(
                                     imageVector = Icons.Rounded.QueueMusic,
                                     contentDescription = null,
-                                    tint = ChampagneGold,
+                                    tint = adaptiveGoldColor(),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -247,7 +247,7 @@ fun LibraryTrackSelectorDialog(
                 Text(
                     text = "已选 ${selectedIds.size} 首新曲目",
                     style = MaterialTheme.typography.bodySmall,
-                    color = ChampagneGold
+                    color = adaptiveGoldColor()
                 )
             }
         },

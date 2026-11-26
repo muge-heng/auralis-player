@@ -46,6 +46,7 @@ class PreferencesRepository(private val context: Context) {
         val NAV_BAR_STYLE = stringPreferencesKey("nav_bar_style")
         val VISUAL_EFFECTS_ENHANCED = booleanPreferencesKey("visual_effects_enhanced")
         val SHOW_LIBRARY_HERO = booleanPreferencesKey("show_library_hero")
+        val SHOW_GENERAL_AUDIO_NOTICE = booleanPreferencesKey("show_general_audio_notice")
         val ENABLE_GENERAL_AUDIO_MODE = booleanPreferencesKey("enable_general_audio_mode")
         val DELETION_GUARD_MODE = stringPreferencesKey("deletion_guard_mode")
 
@@ -115,8 +116,8 @@ class PreferencesRepository(private val context: Context) {
     }
 
     val navBarStyleFlow: Flow<NavBarStyle> = context.auralisDataStore.data.map { prefs ->
-        val raw = prefs[Keys.NAV_BAR_STYLE] ?: NavBarStyle.CLASSIC.name
-        runCatching { NavBarStyle.valueOf(raw) }.getOrDefault(NavBarStyle.CLASSIC)
+        val raw = prefs[Keys.NAV_BAR_STYLE] ?: NavBarStyle.FLOATING_GLASS.name
+        runCatching { NavBarStyle.valueOf(raw) }.getOrDefault(NavBarStyle.FLOATING_GLASS)
     }
 
     val visualEffectsEnhancedFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -125,6 +126,10 @@ class PreferencesRepository(private val context: Context) {
 
     val showLibraryHeroFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
         prefs[Keys.SHOW_LIBRARY_HERO] ?: true
+    }
+
+    val showGeneralAudioNoticeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
+        prefs[Keys.SHOW_GENERAL_AUDIO_NOTICE] ?: true
     }
 
     val enableGeneralAudioModeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -259,6 +264,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setShowLibraryHero(show: Boolean) {
         context.auralisDataStore.edit { it[Keys.SHOW_LIBRARY_HERO] = show }
+    }
+
+    suspend fun setShowGeneralAudioNotice(show: Boolean) {
+        context.auralisDataStore.edit { it[Keys.SHOW_GENERAL_AUDIO_NOTICE] = show }
     }
 
     suspend fun setEnableGeneralAudioMode(enabled: Boolean) {

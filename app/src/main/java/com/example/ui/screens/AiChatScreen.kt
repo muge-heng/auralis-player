@@ -137,9 +137,10 @@ import com.example.ui.components.UndoBannerState
 import com.example.ui.components.bouncyClickable
 import com.example.ui.components.reasoningAccentColor
 import com.example.ui.theme.AuraViolet
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
+import com.example.ui.theme.LocalAuralisDarkTheme
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -240,7 +241,7 @@ fun AiChatScreen(
 
     val listState = rememberLazyListState()
     val effortColor by animateColorAsState(
-        targetValue = reasoningAccentColor(aiConfig.reasoningEffort),
+        targetValue = reasoningAccentColor(aiConfig.reasoningEffort, LocalAuralisDarkTheme.current),
         label = "ai_effort_pill_color"
     )
 
@@ -299,7 +300,7 @@ fun AiChatScreen(
                         Icon(
                             imageVector = Icons.Rounded.Forum,
                             contentDescription = stringResource(R.string.cd_ai_sessions),
-                            tint = ChampagneGold,
+                            tint = adaptiveGoldColor(),
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -326,7 +327,7 @@ fun AiChatScreen(
                                 Text(
                                     text = "${sessions.size} 窗口",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = ChampagneGold
+                                    color = adaptiveGoldColor()
                                 )
                             }
                         }
@@ -420,12 +421,12 @@ fun AiChatScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
                             .background(
-                                if (selected) ChampagneGold.copy(alpha = 0.2f)
+                                if (selected) adaptiveGoldColor().copy(alpha = 0.2f)
                                 else MaterialTheme.colorScheme.surfaceContainer
                             )
                             .border(
                                 width = if (selected) 1.dp else 0.5.dp,
-                                color = if (selected) ChampagneGold.copy(alpha = 0.65f)
+                                color = if (selected) adaptiveGoldColor().copy(alpha = 0.65f)
                                 else MaterialTheme.colorScheme.outlineVariant,
                                 shape = RoundedCornerShape(50)
                             )
@@ -443,7 +444,7 @@ fun AiChatScreen(
                         Text(
                             text = session.title,
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (selected) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (selected) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 140.dp)
@@ -477,7 +478,7 @@ fun AiChatScreen(
                     text = "配置 →",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = ChampagneGold
+                    color = adaptiveGoldColor()
                 )
             }
         } else if (aiConfig.deepSeekApiKey.isBlank()) {
@@ -486,8 +487,8 @@ fun AiChatScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(ChampagneGold.copy(alpha = 0.14f))
-                    .border(0.75.dp, ChampagneGold.copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                    .background(adaptiveGoldColor().copy(alpha = 0.14f))
+                    .border(0.75.dp, adaptiveGoldColor().copy(alpha = 0.45f), RoundedCornerShape(14.dp))
                     .clickable { showConfigSheet = true }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -496,14 +497,14 @@ fun AiChatScreen(
                 Text(
                     text = "尚未配置 API Key · 点击此处填入 DeepSeek 或兼容接口密钥",
                     style = MaterialTheme.typography.labelMedium,
-                    color = ChampagneGold,
+                    color = adaptiveGoldColor(),
                     modifier = Modifier.weight(1f)
                 )
                 Text(
                     text = "去配置 →",
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = ChampagneGold
+                    color = adaptiveGoldColor()
                 )
             }
         }
@@ -576,7 +577,7 @@ fun AiChatScreen(
                     .padding(horizontal = 14.dp, vertical = 6.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                    .border(0.75.dp, ChampagneGold.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                    .border(0.75.dp, adaptiveGoldColor().copy(alpha = 0.4f), RoundedCornerShape(20.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -589,8 +590,8 @@ fun AiChatScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Rounded.Bolt, contentDescription = null, tint = ChampagneGold, modifier = Modifier.size(16.dp))
-                        Text("快捷预设提问（多轮随时调用）", style = MaterialTheme.typography.titleSmall, color = ChampagneGold)
+                        Icon(Icons.Rounded.Bolt, contentDescription = null, tint = adaptiveGoldColor(), modifier = Modifier.size(16.dp))
+                        Text("快捷预设提问（多轮随时调用）", style = MaterialTheme.typography.titleSmall, color = adaptiveGoldColor())
                     }
                     IconButton(
                         onClick = { showQuickPromptsDeck = false },
@@ -710,12 +711,12 @@ fun AiChatScreen(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50))
                             .background(
-                                if (showQuickPromptsDeck) ChampagneGold.copy(alpha = 0.24f)
+                                if (showQuickPromptsDeck) adaptiveGoldColor().copy(alpha = 0.24f)
                                 else MaterialTheme.colorScheme.surfaceContainerHigh
                             )
                             .border(
                                 width = if (showQuickPromptsDeck) 1.dp else 0.5.dp,
-                                color = if (showQuickPromptsDeck) ChampagneGold else MaterialTheme.colorScheme.outlineVariant,
+                                color = if (showQuickPromptsDeck) adaptiveGoldColor() else MaterialTheme.colorScheme.outlineVariant,
                                 shape = RoundedCornerShape(50)
                             )
                             .bouncyClickable(pressedScale = 0.95f) {
@@ -728,14 +729,14 @@ fun AiChatScreen(
                         Icon(
                             imageVector = Icons.Rounded.Bolt,
                             contentDescription = "快捷预设提问",
-                            tint = ChampagneGold,
+                            tint = adaptiveGoldColor(),
                             modifier = Modifier.size(15.dp)
                         )
                         Text(
                             text = "快捷提问",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (showQuickPromptsDeck) ChampagneGold else MaterialTheme.colorScheme.onSurface
+                            color = if (showQuickPromptsDeck) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
@@ -841,12 +842,12 @@ fun AiChatScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(
-                                    if (attachLibraryCatalog) ChampagneGold.copy(alpha = 0.22f)
+                                    if (attachLibraryCatalog) adaptiveGoldColor().copy(alpha = 0.22f)
                                     else MaterialTheme.colorScheme.surfaceContainerHigh
                                 )
                                 .border(
                                     width = if (attachLibraryCatalog) 1.dp else 0.5.dp,
-                                    color = if (attachLibraryCatalog) ChampagneGold.copy(alpha = 0.7f)
+                                    color = if (attachLibraryCatalog) adaptiveGoldColor().copy(alpha = 0.7f)
                                     else MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(50)
                                 )
@@ -857,20 +858,20 @@ fun AiChatScreen(
                             Icon(
                                 imageVector = Icons.Rounded.LibraryMusic,
                                 contentDescription = "选择附带曲库清单与歌词",
-                                tint = if (attachLibraryCatalog) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (attachLibraryCatalog) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = badgeSummary,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (attachLibraryCatalog) FontWeight.SemiBold else FontWeight.Medium,
-                                color = if (attachLibraryCatalog) ChampagneGold else MaterialTheme.colorScheme.onSurface,
+                                color = if (attachLibraryCatalog) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1
                             )
                             Icon(
                                 imageVector = Icons.Rounded.Tune,
                                 contentDescription = null,
-                                tint = if (attachLibraryCatalog) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (attachLibraryCatalog) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(13.dp)
                             )
                         }
@@ -1063,12 +1064,12 @@ fun AiChatScreen(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(
-                                    if (isActive) ChampagneGold.copy(alpha = 0.14f)
+                                    if (isActive) adaptiveGoldColor().copy(alpha = 0.14f)
                                     else MaterialTheme.colorScheme.surfaceContainerHigh
                                 )
                                 .border(
                                     width = if (isActive) 1.dp else 0.5.dp,
-                                    color = if (isActive) ChampagneGold.copy(alpha = 0.65f)
+                                    color = if (isActive) adaptiveGoldColor().copy(alpha = 0.65f)
                                     else MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(18.dp)
                                 )
@@ -1096,7 +1097,7 @@ fun AiChatScreen(
                                     text = session.title,
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
-                                    color = if (isActive) ChampagneGold else MaterialTheme.colorScheme.onSurface,
+                                    color = if (isActive) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurface,
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -1105,14 +1106,14 @@ fun AiChatScreen(
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
-                                            .background(ChampagneGold.copy(alpha = 0.22f))
+                                            .background(adaptiveGoldColor().copy(alpha = 0.22f))
                                             .padding(horizontal = 7.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = "当前",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = ChampagneGold
+                                            color = adaptiveGoldColor()
                                         )
                                     }
                                 }
@@ -1144,7 +1145,7 @@ fun AiChatScreen(
                                     SessionActionPill(
                                         icon = Icons.Rounded.AutoAwesome,
                                         contentDescription = "AI 重新生成标题",
-                                        tint = ChampagneGold,
+                                        tint = adaptiveGoldColor(),
                                         onClick = { onRegenerateSessionTitle(session.id) },
                                         testTag = "ai_regen_title_${session.id}"
                                     )
@@ -1281,11 +1282,11 @@ private fun EmptyAiWelcomeStage(
                             listOf(
                                 RubyAccent.copy(alpha = 0.16f),
                                 AuraViolet.copy(alpha = 0.16f),
-                                ChampagneGold.copy(alpha = 0.10f)
+                                adaptiveGoldColor().copy(alpha = 0.10f)
                             )
                         )
                     )
-                    .border(0.75.dp, ChampagneGold.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+                    .border(0.75.dp, adaptiveGoldColor().copy(alpha = 0.35f), RoundedCornerShape(24.dp))
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1293,7 +1294,7 @@ private fun EmptyAiWelcomeStage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = ChampagneGold)
+                    Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = adaptiveGoldColor())
                     Text("Auralis 声学对话空间", style = MaterialTheme.typography.titleLarge)
                 }
                 Text(
@@ -1334,7 +1335,7 @@ private fun EmptyAiWelcomeStage(
             Text(
                 text = "快捷音乐与声学指令",
                 style = MaterialTheme.typography.labelLarge,
-                color = ChampagneGold,
+                color = adaptiveGoldColor(),
                 modifier = Modifier.padding(top = 4.dp)
             )
         }
@@ -1410,7 +1411,7 @@ private fun UserMessageBubble(message: AiChatMessageEntity) {
                 ) {
                     badges.forEach { badge ->
                         val (icon, tint) = when (badge.type) {
-                            AiAttachmentBadgeType.TRACK -> Icons.Rounded.MusicNote to ChampagneGold
+                            AiAttachmentBadgeType.TRACK -> Icons.Rounded.MusicNote to adaptiveGoldColor()
                             AiAttachmentBadgeType.CATALOG -> Icons.Rounded.LibraryMusic to RubyAccent
                             AiAttachmentBadgeType.LYRICS -> Icons.Rounded.Lyrics to EmeraldLossless
                             AiAttachmentBadgeType.VISION -> Icons.Rounded.ImageSearch to AuraViolet
@@ -1468,7 +1469,7 @@ private fun AssistantMessageBubble(
     var thinkingExpanded by remember(message.id) { mutableStateOf(false) }
 
     val effortLevel = ReasoningEffortLevel.fromApiValue(message.reasoningEffortUsed ?: "off")
-    val effortColor = reasoningAccentColor(effortLevel)
+    val effortColor = reasoningAccentColor(effortLevel, LocalAuralisDarkTheme.current)
 
     val cleanedDisplayText = remember(message.content) {
         stripStructuredJsonDirectives(message.content)
@@ -1511,11 +1512,11 @@ private fun AssistantMessageBubble(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = ChampagneGold, modifier = Modifier.size(15.dp))
+                Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = adaptiveGoldColor(), modifier = Modifier.size(15.dp))
                 Text(
                     text = message.modelUsed ?: "Auralis AI",
                     style = MaterialTheme.typography.labelMedium,
-                    color = ChampagneGold
+                    color = adaptiveGoldColor()
                 )
                 if (effortLevel != ReasoningEffortLevel.OFF) {
                     Box(
@@ -1635,7 +1636,7 @@ private fun AssistantMessageBubble(
             markdown = cleanedDisplayText,
             baseColor = MaterialTheme.colorScheme.onSurface,
             baseStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-            accentColor = ChampagneGold
+            accentColor = adaptiveGoldColor()
         )
 
         // Suggested 10-Band EQ Actions: "Apply Only" + "Apply & Save Preset"
@@ -1716,8 +1717,8 @@ private fun AssistantMessageBubble(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
-                    .background(ChampagneGold.copy(alpha = 0.10f))
-                    .border(0.75.dp, ChampagneGold.copy(alpha = 0.38f), RoundedCornerShape(16.dp))
+                    .background(adaptiveGoldColor().copy(alpha = 0.10f))
+                    .border(0.75.dp, adaptiveGoldColor().copy(alpha = 0.38f), RoundedCornerShape(16.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1728,7 +1729,7 @@ private fun AssistantMessageBubble(
                     Icon(
                         imageVector = Icons.Rounded.QueueMusic,
                         contentDescription = null,
-                        tint = ChampagneGold,
+                        tint = adaptiveGoldColor(),
                         modifier = Modifier.size(18.dp)
                     )
                     Column(modifier = Modifier.weight(1f)) {
@@ -1739,7 +1740,7 @@ private fun AssistantMessageBubble(
                                 "${cardPlaylist.name} (${cardPlaylist.trackTitles.size})"
                             },
                             style = MaterialTheme.typography.titleSmall,
-                            color = ChampagneGold,
+                            color = adaptiveGoldColor(),
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -1774,7 +1775,7 @@ private fun AssistantMessageBubble(
                             Icon(
                                 imageVector = Icons.Rounded.PlayArrow,
                                 contentDescription = null,
-                                tint = ChampagneGold,
+                                tint = adaptiveGoldColor(),
                                 modifier = Modifier.size(12.dp)
                             )
                             Text(
@@ -1791,13 +1792,13 @@ private fun AssistantMessageBubble(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(ChampagneGold.copy(alpha = 0.16f))
+                                .background(adaptiveGoldColor().copy(alpha = 0.16f))
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
                                 text = "+${cardPlaylist.trackTitles.size - 8} 首",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                     }
@@ -1928,7 +1929,7 @@ private fun LiveStreamingBubble(
             delay(100L)
         }
     }
-    val effortColor = reasoningAccentColor(runtime.activeEffort)
+    val effortColor = reasoningAccentColor(runtime.activeEffort, LocalAuralisDarkTheme.current)
 
     Column(
         modifier = Modifier
@@ -2021,7 +2022,7 @@ private fun LiveStreamingBubble(
                 markdown = runtime.liveContent,
                 baseColor = MaterialTheme.colorScheme.onSurface,
                 baseStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                accentColor = ChampagneGold
+                accentColor = adaptiveGoldColor()
             )
         }
     }
@@ -2080,7 +2081,7 @@ private fun ErrorDiagnosticCard(
                 DiagnosticChip("HTTP $code", MaterialTheme.colorScheme.error)
             }
             message.modelUsed?.takeIf { it.isNotBlank() }?.let { model ->
-                DiagnosticChip("模型: $model", ChampagneGold)
+                DiagnosticChip("模型: $model", adaptiveGoldColor())
             }
             message.reasoningEffortUsed?.takeIf { it.isNotBlank() }?.let { eff ->
                 DiagnosticChip("reasoning_effort: $eff", AuraViolet)
@@ -2392,7 +2393,7 @@ private fun AiModelConfigSheet(
                             text = formatTokenCountLabel(parsedMaxTokens ?: DEFAULT_AI_MAX_OUTPUT_TOKENS),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = ChampagneGold
+                            color = adaptiveGoldColor()
                         )
                     }
                     OutlinedTextField(

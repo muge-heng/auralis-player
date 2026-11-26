@@ -33,8 +33,8 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.R
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
+import com.example.ui.theme.adaptiveGoldColor
 import java.io.File
 
 @Composable
@@ -88,7 +88,7 @@ fun QualityBadgePill(
     modifier: Modifier = Modifier
 ) {
     val accent = when {
-        isHiRes -> ChampagneGold
+        isHiRes -> adaptiveGoldColor()
         isLossless -> EmeraldLossless
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }

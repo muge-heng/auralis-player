@@ -43,6 +43,7 @@ import androidx.compose.ui.util.lerp
 import com.example.model.AuraPalette
 import com.example.model.Track
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -135,6 +136,7 @@ fun HeartBurstIconButton(
         modifier = modifier.size(48.dp),
         contentAlignment = Alignment.Center
     ) {
+        val sparkGold = adaptiveGoldColor()
         if (burstProgress.value > 0f && burstProgress.value < 1f) {
             val p = burstProgress.value
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -156,7 +158,7 @@ fun HeartBurstIconButton(
                         y = center.y + (sin(angle) * dist).toFloat()
                     )
                     drawCircle(
-                        color = if (i % 2 == 0) RubyAccent.copy(alpha = ringAlpha) else Color(0xFFF0C28A).copy(alpha = ringAlpha),
+                        color = if (i % 2 == 0) RubyAccent.copy(alpha = ringAlpha) else sparkGold.copy(alpha = ringAlpha),
                         radius = (3.2f * (1f - p)).coerceAtLeast(0.5f),
                         center = pt
                     )

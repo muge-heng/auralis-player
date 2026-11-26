@@ -68,9 +68,9 @@ import com.example.model.formatDuration
 import com.example.ui.components.QualityBadgePill
 import com.example.ui.components.TrackArtwork
 import com.example.ui.theme.AuraViolet
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 private enum class DuplicateFilterTab(val label: String) {
     ALL("全部重复"),
@@ -236,7 +236,7 @@ fun DuplicateManagerSheet(
                                 Icon(
                                     imageVector = Icons.Rounded.AutoAwesome,
                                     contentDescription = null,
-                                    tint = ChampagneGold,
+                                    tint = adaptiveGoldColor(),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Text(
@@ -500,7 +500,7 @@ private fun DuplicateGroupCard(
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(
-                                if (group.hasQualityDifference) ChampagneGold.copy(alpha = 0.22f)
+                                if (group.hasQualityDifference) adaptiveGoldColor().copy(alpha = 0.22f)
                                 else MaterialTheme.colorScheme.surfaceContainerHighest
                             )
                             .padding(horizontal = 7.dp, vertical = 2.dp)

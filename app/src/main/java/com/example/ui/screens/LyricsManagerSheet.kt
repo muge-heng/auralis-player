@@ -66,8 +66,9 @@ import com.example.model.OnlineLyricCandidate
 import com.example.model.Track
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScale
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
+import com.example.ui.theme.adaptiveGoldColor
+import com.example.ui.theme.adaptiveLyricSourceColor
 import com.example.viewmodel.OnlineLyricSearchState
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -118,7 +119,7 @@ fun LyricsManagerSheet(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Rounded.Lyrics, contentDescription = null, tint = ChampagneGold)
+                Icon(Icons.Rounded.Lyrics, contentDescription = null, tint = adaptiveGoldColor())
                 Column {
                     Text("歌词工坊与多源引擎", style = MaterialTheme.typography.titleLarge)
                     Text(
@@ -167,7 +168,7 @@ fun LyricsManagerSheet(
                                 Icon(
                                     Icons.Rounded.FormatBold,
                                     contentDescription = null,
-                                    tint = ChampagneGold,
+                                    tint = adaptiveGoldColor(),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text("歌词排版与字体粗细", style = MaterialTheme.typography.titleSmall)
@@ -203,7 +204,7 @@ fun LyricsManagerSheet(
                             Text(
                                 text = "Weight ${lyricSettings.fontWeight} · ${(lyricSettings.fontScale * 100).roundToInt()}% 字号",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                     }
@@ -216,7 +217,7 @@ fun LyricsManagerSheet(
                         Text(
                             text = lyricSettings.fontWeightLabel,
                             style = MaterialTheme.typography.labelMedium,
-                            color = ChampagneGold
+                            color = adaptiveGoldColor()
                         )
                     }
                     Slider(
@@ -241,7 +242,7 @@ fun LyricsManagerSheet(
                         Text(
                             text = lyricFontScaleLabel(snappedFontScale),
                             style = MaterialTheme.typography.labelMedium,
-                            color = ChampagneGold
+                            color = adaptiveGoldColor()
                         )
                     }
                     Row(
@@ -257,12 +258,12 @@ fun LyricsManagerSheet(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(
-                                        if (isSelected) ChampagneGold.copy(alpha = 0.22f)
+                                        if (isSelected) adaptiveGoldColor().copy(alpha = 0.22f)
                                         else MaterialTheme.colorScheme.surfaceContainerHigh
                                     )
                                     .border(
                                         width = if (isSelected) 1.dp else 0.5.dp,
-                                        color = if (isSelected) ChampagneGold else MaterialTheme.colorScheme.outlineVariant,
+                                        color = if (isSelected) adaptiveGoldColor() else MaterialTheme.colorScheme.outlineVariant,
                                         shape = RoundedCornerShape(10.dp)
                                     )
                                     .clickable {
@@ -277,7 +278,7 @@ fun LyricsManagerSheet(
                                     text = tierLabel,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isSelected) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (isSelected) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1
                                 )
                             }
@@ -297,7 +298,7 @@ fun LyricsManagerSheet(
                                 Icon(
                                     Icons.Rounded.AutoAwesome,
                                     contentDescription = null,
-                                    tint = ChampagneGold,
+                                    tint = adaptiveGoldColor(),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text("模拟逐字歌词动效", style = MaterialTheme.typography.titleSmall)
@@ -372,7 +373,7 @@ fun LyricsManagerSheet(
                             Text(
                                 text = String.format(Locale.US, "当前偏移 %+.1f 秒", currentLyric.globalOffsetMs / 1000f),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -423,7 +424,7 @@ fun LyricsManagerSheet(
                     ) {
                         items(LyricSource.entries, key = { it.id }) { source ->
                             val isSelected = selectedSource == source
-                            val accent = Color(source.accentHex)
+                            val accent = adaptiveLyricSourceColor(source)
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
@@ -484,7 +485,7 @@ fun LyricsManagerSheet(
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             onlineSearchState.sourceSummaries.forEach { (src, status) ->
-                                val srcColor = Color(src.accentHex)
+                                val srcColor = adaptiveLyricSourceColor(src)
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(8.dp))
@@ -514,7 +515,7 @@ fun LyricsManagerSheet(
             // Candidate list
             items(onlineSearchState.candidates, key = { it.uniqueKey }) { candidate ->
                 val isSynced = !candidate.syncedLyrics.isNullOrBlank()
-                val sourceColor = Color(candidate.source.accentHex)
+                val sourceColor = adaptiveLyricSourceColor(candidate.source)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -566,7 +567,7 @@ fun LyricsManagerSheet(
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         if (candidate.isWordSynced) {
-                            LyricFeatureTag("原生逐字 KRC/YRC", ChampagneGold)
+                            LyricFeatureTag("原生逐字 KRC/YRC", adaptiveGoldColor())
                         } else if (isSynced) {
                             LyricFeatureTag("同步 LRC", EmeraldLossless)
                         } else {

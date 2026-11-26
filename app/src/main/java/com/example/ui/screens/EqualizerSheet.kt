@@ -67,6 +67,7 @@ import com.example.model.normalizeEqBands
 import com.example.playback.AcousticDspEngine
 import com.example.playback.StudioEqPresets
 import com.example.ui.theme.ChampagneGold
+import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
 import java.util.Locale
@@ -208,7 +209,7 @@ fun EqualizerSheet(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Text("我的自定义预设", style = MaterialTheme.typography.titleSmall, color = ChampagneGold)
+                            Text("我的自定义预设", style = MaterialTheme.typography.titleSmall, color = adaptiveGoldColor())
                             Text(
                                 text = "(${customPresets.size})",
                                 style = MaterialTheme.typography.labelSmall,
@@ -334,7 +335,7 @@ fun EqualizerSheet(
                             Text(
                                 text = String.format(Locale.US, "%+.1f", db),
                                 style = MaterialTheme.typography.labelMedium,
-                                color = if (eqState.enabled) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (eqState.enabled) adaptiveGoldColor() else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.width(44.dp)
                             )
                         }
@@ -364,7 +365,7 @@ fun EqualizerSheet(
                             Text(
                                 "${eqState.bassBoostPercent}%",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                         Slider(
@@ -388,7 +389,7 @@ fun EqualizerSheet(
                             Text(
                                 "${eqState.virtualizerPercent}%",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                         Slider(

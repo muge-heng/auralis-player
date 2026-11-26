@@ -68,23 +68,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.model.ReasoningEffortLevel
 import com.example.ui.theme.AuraViolet
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
+import com.example.ui.theme.LocalAuralisDarkTheme
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveAmberColor
+import com.example.ui.theme.adaptiveGoldColor
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-fun reasoningAccentColor(level: ReasoningEffortLevel): Color = when (level) {
+fun reasoningAccentColor(level: ReasoningEffortLevel, darkTheme: Boolean = true): Color = when (level) {
     ReasoningEffortLevel.OFF -> Color(0xFF7D7D94)
-    ReasoningEffortLevel.LOW -> EmeraldLossless
-    ReasoningEffortLevel.MEDIUM -> Color(0xFF38BDF8)
-    ReasoningEffortLevel.HIGH -> AuraViolet
-    ReasoningEffortLevel.XHIGH -> Color(0xFFF59E0B)
+    ReasoningEffortLevel.LOW -> if (darkTheme) EmeraldLossless else Color(0xFF158A52)
+    ReasoningEffortLevel.MEDIUM -> if (darkTheme) Color(0xFF38BDF8) else Color(0xFF0284C7)
+    ReasoningEffortLevel.HIGH -> if (darkTheme) AuraViolet else Color(0xFF5A42D4)
+    ReasoningEffortLevel.XHIGH -> if (darkTheme) Color(0xFFF59E0B) else Color(0xFFB45309)
     ReasoningEffortLevel.MAX -> RubyAccent
-    ReasoningEffortLevel.ULTRA -> Color(0xFFE879F9)
+    ReasoningEffortLevel.ULTRA -> if (darkTheme) Color(0xFFE879F9) else Color(0xFFA21CAF)
 }
 
 /**
@@ -135,8 +137,11 @@ fun ReasoningEffortSliderCard(
         }
     }
 
+    val isDarkTheme = LocalAuralisDarkTheme.current
+    val goldAccent = adaptiveGoldColor()
+    val amberAccent = adaptiveAmberColor()
     val accentColor by animateColorAsState(
-        targetValue = reasoningAccentColor(currentLevel),
+        targetValue = reasoningAccentColor(currentLevel, isDarkTheme),
         animationSpec = tween(320),
         label = "reasoning_accent"
     )
@@ -177,14 +182,14 @@ fun ReasoningEffortSliderCard(
                 Color(0xFF38BDF8),
                 Color(0xFFA855F7),
                 Color(0xFFFA2D48),
-                ChampagneGold
+                goldAccent
             )
         )
         ReasoningEffortLevel.MAX -> Brush.linearGradient(
-            listOf(RubyAccent, ChampagneGold, RubyAccent.copy(alpha = 0.55f))
+            listOf(RubyAccent, goldAccent, RubyAccent.copy(alpha = 0.55f))
         )
         ReasoningEffortLevel.XHIGH -> Brush.linearGradient(
-            listOf(Color(0xFFF59E0B), Color(0xFFEC4899), AuraViolet)
+            listOf(amberAccent, Color(0xFFEC4899), AuraViolet)
         )
         ReasoningEffortLevel.HIGH -> Brush.linearGradient(
             listOf(AuraViolet.copy(alpha = 0.8f), Color(0xFF38BDF8).copy(alpha = 0.45f))
@@ -395,19 +400,19 @@ fun ReasoningEffortSliderCard(
                                     0f to Color(0xFF38BDF8),
                                     (0.32f + shift).coerceIn(0.1f, 0.5f) to AuraViolet,
                                     (0.66f + shift).coerceIn(0.45f, 0.85f) to RubyAccent,
-                                    1f to ChampagneGold
+                                    1f to goldAccent
                                 ),
                                 startX = padX,
                                 endX = thumbX
                             )
                         }
                         ReasoningEffortLevel.MAX -> Brush.horizontalGradient(
-                            listOf(AuraViolet, RubyAccent, ChampagneGold),
+                            listOf(AuraViolet, RubyAccent, goldAccent),
                             startX = padX,
                             endX = thumbX
                         )
                         ReasoningEffortLevel.XHIGH -> Brush.horizontalGradient(
-                            listOf(Color(0xFF38BDF8), Color(0xFFF59E0B), Color(0xFFEC4899)),
+                            listOf(Color(0xFF38BDF8), amberAccent, Color(0xFFEC4899)),
                             startX = padX,
                             endX = thumbX
                         )
@@ -461,7 +466,7 @@ fun ReasoningEffortSliderCard(
                         drawPath(
                             path = wavePath,
                             color = if (currentLevel == ReasoningEffortLevel.ULTRA) Color.White.copy(alpha = 0.72f)
-                            else ChampagneGold.copy(alpha = 0.62f),
+                            else goldAccent.copy(alpha = 0.62f),
                             style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round)
                         )
                     }
@@ -479,7 +484,7 @@ fun ReasoningEffortSliderCard(
                     if (!lvl.isDefaultEnabled) {
                         // Tiny diamond dot above extended custom tiers
                         drawCircle(
-                            color = ChampagneGold.copy(alpha = if (passed) 0.9f else 0.45f),
+                            color = goldAccent.copy(alpha = if (passed) 0.9f else 0.45f),
                             radius = 1.8.dp.toPx(),
                             center = Offset(tickX, cy - 11.dp.toPx())
                         )
@@ -524,7 +529,7 @@ fun ReasoningEffortSliderCard(
                         val sx = thumbX + (cos(a) * r).toFloat()
                         val sy = cy + (sin(a) * r).toFloat()
                         drawCircle(
-                            color = if (i % 2 == 0) ChampagneGold else RubyAccent,
+                            color = if (i % 2 == 0) goldAccent else RubyAccent,
                             radius = 2.4.dp.toPx(),
                             center = Offset(sx, sy)
                         )
@@ -553,7 +558,7 @@ fun ReasoningEffortSliderCard(
                         center = Offset(thumbX, cy),
                         style = Stroke(width = 1.4.dp.toPx())
                     )
-                    val starColors = listOf(Color(0xFF38BDF8), ChampagneGold, Color(0xFFE879F9), RubyAccent, Color.White, EmeraldLossless)
+                    val starColors = listOf(Color(0xFF38BDF8), goldAccent, Color(0xFFE879F9), RubyAccent, Color.White, EmeraldLossless)
                     for (i in 0 until 6) {
                         val a = phase * 1.4f + i * (2.0 * PI / 6.0)
                         val rx = 18.dp.toPx()
@@ -638,7 +643,7 @@ fun ReasoningEffortSliderCard(
                 ) {
                     ReasoningEffortLevel.optionalExtendedLevels.forEach { extLevel ->
                         val active = extLevel in enabledLevels
-                        val extColor = reasoningAccentColor(extLevel)
+                        val extColor = reasoningAccentColor(extLevel, isDarkTheme)
                         FilterChip(
                             selected = active,
                             onClick = { onToggleExtendedLevel(extLevel) },

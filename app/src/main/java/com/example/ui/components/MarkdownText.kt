@@ -66,6 +66,7 @@ import com.example.ui.theme.AuraViolet
 import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 import java.net.URI
 import java.net.URLDecoder
 
@@ -138,7 +139,7 @@ fun MarkdownText(
     modifier: Modifier = Modifier,
     baseColor: Color = MaterialTheme.colorScheme.onSurface,
     baseStyle: TextStyle = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-    accentColor: Color = ChampagneGold,
+    accentColor: Color = adaptiveGoldColor(),
     onOpenUrl: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
@@ -363,7 +364,7 @@ private fun ToolTraceCard(
 ) {
     val (icon, tint) = when (block.kind) {
         ToolTraceKind.SEARCH -> Icons.Rounded.TravelExplore to accentColor
-        ToolTraceKind.FETCH -> Icons.Rounded.Language to ChampagneGold
+        ToolTraceKind.FETCH -> Icons.Rounded.Language to adaptiveGoldColor()
         ToolTraceKind.RESULT -> Icons.Rounded.LibraryBooks to EmeraldLossless
         ToolTraceKind.TOOL -> Icons.Rounded.Build to AuraViolet
     }

@@ -57,9 +57,9 @@ import com.example.data.scanner.ImportConflictDecision
 import com.example.data.scanner.ImportQualityConflict
 import com.example.data.scanner.TrackDeduplicator
 import com.example.model.Track
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -109,13 +109,13 @@ fun ImportConflictDialog(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(ChampagneGold.copy(alpha = 0.16f)),
+                            .background(adaptiveGoldColor().copy(alpha = 0.16f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.CompareArrows,
                             contentDescription = null,
-                            tint = ChampagneGold,
+                            tint = adaptiveGoldColor(),
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -488,7 +488,7 @@ private fun ConflictVersionOptionRow(
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(ChampagneGold.copy(alpha = 0.22f))
+                            .background(adaptiveGoldColor().copy(alpha = 0.22f))
                             .padding(horizontal = 7.dp, vertical = 2.dp)
                     ) {
                         Text(

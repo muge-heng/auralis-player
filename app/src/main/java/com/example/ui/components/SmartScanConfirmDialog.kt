@@ -38,8 +38,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.model.ScanFilterConfig
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 @Composable
 fun SmartScanConfirmDialog(
@@ -85,7 +85,7 @@ fun SmartScanConfirmDialog(
                     Icon(
                         imageVector = Icons.Rounded.FilterAlt,
                         contentDescription = null,
-                        tint = ChampagneGold,
+                        tint = adaptiveGoldColor(),
                         modifier = Modifier.size(16.dp)
                     )
                     Text(

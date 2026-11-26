@@ -157,12 +157,15 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HapticProfile.STUDIO)
 
     val navBarStyle: StateFlow<NavBarStyle> = prefs.navBarStyleFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NavBarStyle.CLASSIC)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NavBarStyle.FLOATING_GLASS)
 
     val visualEffectsEnhanced: StateFlow<Boolean> = prefs.visualEffectsEnhancedFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val showLibraryHero: StateFlow<Boolean> = prefs.showLibraryHeroFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val showGeneralAudioNotice: StateFlow<Boolean> = prefs.showGeneralAudioNoticeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val enableGeneralAudioMode: StateFlow<Boolean> = prefs.enableGeneralAudioModeFlow
@@ -1873,6 +1876,10 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun setShowLibraryHero(show: Boolean) = viewModelScope.launch {
         haptics.tickLight()
         prefs.setShowLibraryHero(show)
+    }
+    fun setShowGeneralAudioNotice(show: Boolean) = viewModelScope.launch {
+        haptics.tickLight()
+        prefs.setShowGeneralAudioNotice(show)
     }
     fun setEnableGeneralAudioMode(enabled: Boolean) = viewModelScope.launch {
         haptics.tickLight()

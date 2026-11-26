@@ -171,14 +171,14 @@ fun MiniPlayerBar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .shadow(
-                elevation = if (visualEffectsEnhanced) {
-                    if (darkTheme) 22.dp else 16.dp
+                elevation = if (darkTheme) {
+                    if (visualEffectsEnhanced) 22.dp else 14.dp
                 } else {
-                    if (darkTheme) 14.dp else 10.dp
+                    if (visualEffectsEnhanced) 12.dp else 8.dp
                 },
                 shape = RoundedCornerShape(24.dp),
-                ambientColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.42f else 0.24f) else Color.Black.copy(alpha = 0.14f),
-                spotColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.52f else 0.30f) else accent.copy(alpha = 0.20f)
+                ambientColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.42f else 0.24f) else Color(0xFF1A1A2E).copy(alpha = 0.08f),
+                spotColor = if (darkTheme) accent.copy(alpha = if (visualEffectsEnhanced) 0.52f else 0.30f) else Color(0xFF1A1A2E).copy(alpha = 0.10f)
             )
             .pointerInput(Unit) {
                 awaitEachGesture {

@@ -505,16 +505,17 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 6)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 7)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -872,5 +873,42 @@ class ExampleUnitTest {
         assertEquals("流明_ Part_1.txt", txtName)
         assertEquals("text/plain", txtMime)
     }
+
+    @Test
+    fun liquidGlassNavDragMathAndLightThemeContrastVerify() {
+        // 4 tabs across 400px -> each slot is 100px wide, centers at 50, 150, 250, 350
+        assertEquals(0f, com.example.ui.components.computeLiquidNavDragSlot(50f, 400f, 4), 0.001f)
+        assertEquals(1f, com.example.ui.components.computeLiquidNavDragSlot(150f, 400f, 4), 0.001f)
+        assertEquals(1.5f, com.example.ui.components.computeLiquidNavDragSlot(200f, 400f, 4), 0.001f)
+        assertEquals(3f, com.example.ui.components.computeLiquidNavDragSlot(350f, 400f, 4), 0.001f)
+
+        // Elastic rubber-band clamping past left & right edges
+        val leftOverscroll = com.example.ui.components.computeLiquidNavDragSlot(-100f, 400f, 4)
+        assertTrue(leftOverscroll in -0.16f..0f)
+        val rightOverscroll = com.example.ui.components.computeLiquidNavDragSlot(600f, 400f, 4)
+        assertTrue(rightOverscroll in 3.0f..3.16f)
+
+        // Discrete target tab mapping
+        assertEquals(0, com.example.ui.components.computeLiquidNavTargetIndex(-20f, 400f, 4))
+        assertEquals(0, com.example.ui.components.computeLiquidNavTargetIndex(99f, 400f, 4))
+        assertEquals(1, com.example.ui.components.computeLiquidNavTargetIndex(100f, 400f, 4))
+        assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
+        assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
+
+        // Liquid Glass is the default nav bar & v0.9.6 is active
+        assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+
+        // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
+        val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
+            com.example.ui.theme.ChampagneGold.green * 0.587f +
+            com.example.ui.theme.ChampagneGold.blue * 0.114f
+        val lightGoldLum = com.example.ui.theme.ChampagneGoldLight.red * 0.299f +
+            com.example.ui.theme.ChampagneGoldLight.green * 0.587f +
+            com.example.ui.theme.ChampagneGoldLight.blue * 0.114f
+        assertTrue("Light gold luminance ($lightGoldLum) should be well below dark gold ($darkGoldLum)", lightGoldLum < 0.50f && lightGoldLum < darkGoldLum - 0.25f)
+    }
 }
+
 

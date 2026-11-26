@@ -142,6 +142,7 @@ import com.example.ui.components.QualityBadgePill
 import com.example.ui.components.TrackArtwork
 import com.example.ui.components.bouncyClickable
 import com.example.ui.theme.ChampagneGold
+import com.example.ui.theme.ChampagneGoldLight
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -336,7 +337,7 @@ fun NowPlayingSheet(
     val pillBg = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f)
     val pillActiveBg = if (darkTheme) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.12f)
     val pillBorder = if (darkTheme) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
-    val accentGold = if (darkTheme) ChampagneGold else Color(0xFFC27B1A)
+    val accentGold = if (darkTheme) ChampagneGold else ChampagneGoldLight
     val playBtnBg = if (darkTheme) Color.White else Color(0xFF151521)
     val playBtnIconTint = if (darkTheme) Color(0xFF0E0E14) else Color.White
 
@@ -1884,7 +1885,7 @@ private fun QueueStageView(
     val pillBg = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.Black.copy(alpha = 0.06f)
     val rowBg = if (darkTheme) Color.White.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.56f)
     val rowActiveBg = if (darkTheme) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.92f)
-    val accentGold = if (darkTheme) ChampagneGold else Color(0xFFC27B1A)
+    val accentGold = if (darkTheme) ChampagneGold else ChampagneGoldLight
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(

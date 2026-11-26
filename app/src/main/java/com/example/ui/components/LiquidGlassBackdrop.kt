@@ -75,37 +75,37 @@ fun computeGlassVisualProfile(
     val activeAgsl = enhanced && supportsHardwareBlur && supportsAgslShader
     return when {
         activeBlur && enhanced -> GlassVisualProfile(
-            blurRadiusDp = 26f,
-            veilTopAlpha = if (darkTheme) 0.20f else 0.26f,
+            blurRadiusDp = if (darkTheme) 26f else 24f,
+            veilTopAlpha = if (darkTheme) 0.20f else 0.44f,
             veilBottomAlpha = if (darkTheme) 0.28f else 0.34f,
-            accentTintAlpha = if (darkTheme) 0.10f else 0.06f,
-            refractionPx = 15f,
+            accentTintAlpha = if (darkTheme) 0.10f else 0.05f,
+            refractionPx = if (darkTheme) 15f else 12f,
             useAgslRefraction = activeAgsl,
             useBackdropBlur = true
         )
         activeBlur -> GlassVisualProfile(
             blurRadiusDp = 18f,
-            veilTopAlpha = if (darkTheme) 0.28f else 0.36f,
-            veilBottomAlpha = if (darkTheme) 0.36f else 0.44f,
-            accentTintAlpha = if (darkTheme) 0.06f else 0.04f,
+            veilTopAlpha = if (darkTheme) 0.28f else 0.48f,
+            veilBottomAlpha = if (darkTheme) 0.36f else 0.40f,
+            accentTintAlpha = if (darkTheme) 0.06f else 0.03f,
             refractionPx = 0f,
             useAgslRefraction = false,
             useBackdropBlur = true
         )
         enhanced -> GlassVisualProfile(
             blurRadiusDp = 0f,
-            veilTopAlpha = if (darkTheme) 0.46f else 0.56f,
-            veilBottomAlpha = if (darkTheme) 0.54f else 0.64f,
-            accentTintAlpha = if (darkTheme) 0.12f else 0.08f,
+            veilTopAlpha = if (darkTheme) 0.46f else 0.68f,
+            veilBottomAlpha = if (darkTheme) 0.54f else 0.60f,
+            accentTintAlpha = if (darkTheme) 0.12f else 0.06f,
             refractionPx = 0f,
             useAgslRefraction = false,
             useBackdropBlur = false
         )
         else -> GlassVisualProfile(
             blurRadiusDp = 0f,
-            veilTopAlpha = if (darkTheme) 0.52f else 0.62f,
-            veilBottomAlpha = if (darkTheme) 0.60f else 0.68f,
-            accentTintAlpha = if (darkTheme) 0.06f else 0.04f,
+            veilTopAlpha = if (darkTheme) 0.52f else 0.74f,
+            veilBottomAlpha = if (darkTheme) 0.60f else 0.66f,
+            accentTintAlpha = if (darkTheme) 0.06f else 0.03f,
             refractionPx = 0f,
             useAgslRefraction = false,
             useBackdropBlur = false
@@ -316,14 +316,18 @@ fun LiquidGlassSurface(
             }
             .clip(shape)
     ) {
-        // Layer 1: Live refracted & frosted real-time backdrop behind the floating capsule
+        // Layer 1: Live refracted & frosted real-time backdrop behind the floating capsule.
+        // IMPORTANT: Keep this inner blurred graphicsLayer UNCLIPPED (rectangular) while the parent
+        // Box performs the rounded capsule clip, and paint an opaque theme-matched base before drawing
+        // contentLayer. That prevents Skia blur from sampling transparent (0,0,0,0) edge pixels that
+        // would otherwise collapse into a dark/black vignette halo in light mode!
+        val fallbackBgColor = if (darkTheme) Color(0xFF0B0B12) else Color(0xFFF6F6FA)
         if (backdropState != null && profile.useBackdropBlur) {
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        this.shape = shape
-                        this.clip = true
+                        clip = false
                         val w = size.width
                         val h = size.height
                         renderEffect = if (
@@ -336,9 +340,18 @@ fun LiquidGlassSurface(
                                 runtimeShader.setFloatUniform("resolution", w, h)
                                 runtimeShader.setFloatUniform("cornerRadius", cornerPx.coerceAtMost(minOf(w, h) * 0.5f))
                                 runtimeShader.setFloatUniform("refractionStrength", profile.refractionPx)
-                                runtimeShader.setFloatUniform("chromaticDispersion", 0.26f)
+                                runtimeShader.setFloatUniform(
+                                    "chromaticDispersion",
+                                    if (darkTheme) 0.24f else 0.14f
+                                )
                                 runtimeShader.setFloatUniform("isDark", if (darkTheme) 1f else 0f)
                                 runtimeShader.setFloatUniform("shimmerPhase", shimmerPhase)
+                                runtimeShader.setFloatUniform(
+                                    "fallbackBg",
+                                    fallbackBgColor.red,
+                                    fallbackBgColor.green,
+                                    fallbackBgColor.blue
+                                )
 
                                 val blurNode = AndroidRenderEffect.createBlurEffect(
                                     blurPx,
@@ -357,6 +370,7 @@ fun LiquidGlassSurface(
                         }
                     }
                     .drawBehind {
+                        drawRect(fallbackBgColor)
                         if (backdropState.isRecorded && !backdropState.contentLayer.isReleased) {
                             val dx = backdropState.sourceOriginInRoot.x - targetOriginInRoot.x
                             val dy = backdropState.sourceOriginInRoot.y - targetOriginInRoot.y
@@ -436,7 +450,19 @@ fun AmbientAppAuraOverlay(
         val w = size.width
         val h = size.height
         val t = flowTime
-        val scale = if (darkTheme) 1.0f else 0.52f
+        val scale = if (darkTheme) 1.0f else 0.44f
+
+        // In light mode, gently lift extracted album colors toward airy pastels so dark covers
+        // never cast muddy grey/black smudges underneath translucent light glass capsules.
+        fun pastelForLight(c: Color): Color = if (darkTheme) c else Color(
+            red = (c.red * 0.58f + 0.42f).coerceIn(0f, 1f),
+            green = (c.green * 0.58f + 0.42f).coerceIn(0f, 1f),
+            blue = (c.blue * 0.58f + 0.42f).coerceIn(0f, 1f),
+            alpha = 1f
+        )
+        val effPrimary = pastelForLight(primaryColor)
+        val effSecondary = pastelForLight(secondaryColor)
+        val effGlow = pastelForLight(glowColor)
 
         // Upper-left slow ambient bloom
         val c1 = Offset(
@@ -447,8 +473,8 @@ fun AmbientAppAuraOverlay(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    primaryColor.copy(alpha = 0.22f * scale),
-                    primaryColor.copy(alpha = 0.06f * scale),
+                    effPrimary.copy(alpha = 0.22f * scale),
+                    effPrimary.copy(alpha = 0.06f * scale),
                     Color.Transparent
                 ),
                 center = c1,
@@ -467,8 +493,8 @@ fun AmbientAppAuraOverlay(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    secondaryColor.copy(alpha = 0.24f * scale),
-                    glowColor.copy(alpha = 0.08f * scale),
+                    effSecondary.copy(alpha = 0.24f * scale),
+                    effGlow.copy(alpha = 0.08f * scale),
                     Color.Transparent
                 ),
                 center = c2,
@@ -487,7 +513,7 @@ fun AmbientAppAuraOverlay(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(
-                    primaryColor.copy(alpha = 0.16f * scale),
+                    effPrimary.copy(alpha = 0.16f * scale),
                     Color.Transparent
                 ),
                 center = c3,
@@ -507,10 +533,17 @@ private const val LIQUID_GLASS_REFRACTION_AGSL = """
     uniform float chromaticDispersion;
     uniform float isDark;
     uniform float shimmerPhase;
+    uniform half3 fallbackBg;
 
     float sdRoundBox(float2 p, float2 b, float r) {
         float2 q = abs(p) - (b - float2(r));
         return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+    }
+
+    half3 compositeOverBg(half4 s, half3 bg) {
+        // Skia shader samples are premultiplied (rgb*a, a). Composite over opaque theme bg
+        // so low-alpha / boundary blur samples NEVER darken to black!
+        return clamp(s.rgb + bg * (1.0 - clamp(s.a, 0.0, 1.0)), 0.0, 1.0);
     }
 
     half4 main(float2 fragCoord) {
@@ -542,19 +575,22 @@ private const val LIQUID_GLASS_REFRACTION_AGSL = """
         float2 uvG = clamp(fragCoord + offsetG, float2(1.0), maxCoord);
         float2 uvB = clamp(fragCoord + offsetB, float2(1.0), maxCoord);
 
-        half4 sampleR = backdrop.eval(uvR);
-        half4 sampleG = backdrop.eval(uvG);
-        half4 sampleB = backdrop.eval(uvB);
+        half3 rgbR = compositeOverBg(backdrop.eval(uvR), fallbackBg);
+        half3 rgbG = compositeOverBg(backdrop.eval(uvG), fallbackBg);
+        half3 rgbB = compositeOverBg(backdrop.eval(uvB), fallbackBg);
 
-        half3 refracted = half3(sampleR.r, sampleG.g, sampleB.b);
+        half3 refracted = half3(rgbR.r, rgbG.g, rgbB.b);
+        // Gentle icy crystal brightness lift in light mode so glass reads clean & airy
+        half lightLift = half((1.0 - isDark) * 0.08);
+        refracted = mix(refracted, half3(1.0), lightLift);
 
         // Fresnel top-edge specular light reflection & subtle moving caustic glint
         float topHighlight = clamp(-normal.y, 0.0, 1.0) * pow(rim, 1.45);
-        float bottomHighlight = clamp(normal.y, 0.0, 1.0) * pow(rim, 2.2) * 0.45;
+        float bottomHighlight = clamp(normal.y, 0.0, 1.0) * pow(rim, 2.2) * 0.42;
         float wave = 0.5 + 0.5 * sin(fragCoord.x * 0.018 + shimmerPhase);
-        float caustic = pow(rim, 2.4) * (0.28 + 0.35 * wave);
+        float caustic = pow(rim, 2.4) * (0.26 + 0.34 * wave);
 
-        float specularAmount = (topHighlight * 0.24 + bottomHighlight * 0.10 + caustic * 0.12) * mix(0.90, 0.65, isDark);
+        float specularAmount = (topHighlight * 0.24 + bottomHighlight * 0.10 + caustic * 0.12) * mix(0.85, 0.65, isDark);
         half3 finalRgb = clamp(refracted + half3(specularAmount), 0.0, 1.0);
 
         return half4(finalRgb, 1.0);

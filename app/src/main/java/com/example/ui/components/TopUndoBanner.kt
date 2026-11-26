@@ -54,8 +54,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -227,13 +227,14 @@ fun TopUndoBanner(
                             )
                         }
 
+                        val undoGold = adaptiveGoldColor()
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(ChampagneGold.copy(alpha = 0.22f))
-                                .border(0.75.dp, ChampagneGold.copy(alpha = 0.6f), RoundedCornerShape(50))
+                                .background(undoGold.copy(alpha = 0.18f))
+                                .border(0.75.dp, undoGold.copy(alpha = 0.58f), RoundedCornerShape(50))
                                 .clickable {
                                     banner.onUndo()
                                     onDismiss()
@@ -244,14 +245,14 @@ fun TopUndoBanner(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.Undo,
                                 contentDescription = banner.actionLabel,
-                                tint = ChampagneGold,
+                                tint = undoGold,
                                 modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = banner.actionLabel,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = ChampagneGold,
+                                color = undoGold,
                                 maxLines = 1,
                                 softWrap = false
                             )
@@ -273,6 +274,7 @@ fun TopUndoBanner(
                     }
 
                     // Slim animated countdown hairline along the bottom edge
+                    val timerGold = adaptiveGoldColor()
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -284,7 +286,7 @@ fun TopUndoBanner(
                                 .fillMaxWidth(progress.value.coerceIn(0f, 1f))
                                 .height(2.5.dp)
                                 .background(
-                                    if (isDragging) Color.Transparent else ChampagneGold
+                                    if (isDragging) Color.Transparent else timerGold
                                 )
                         )
                     }

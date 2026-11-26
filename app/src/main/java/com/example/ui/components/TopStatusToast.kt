@@ -55,9 +55,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -144,7 +144,7 @@ fun TopStatusToast(
 
             val accent = when (toast.level) {
                 StatusToastLevel.SUCCESS -> EmeraldLossless
-                StatusToastLevel.WARNING -> ChampagneGold
+                StatusToastLevel.WARNING -> adaptiveGoldColor()
                 StatusToastLevel.ERROR -> RubyAccent
                 StatusToastLevel.INFO -> MaterialTheme.colorScheme.primary
             }

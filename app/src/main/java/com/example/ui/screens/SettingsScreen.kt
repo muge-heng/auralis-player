@@ -96,9 +96,10 @@ import com.example.model.NavBarStyle
 import com.example.model.ScanFilterConfig
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScale
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
+import com.example.ui.theme.adaptiveLyricSourceColor
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -262,17 +263,18 @@ fun SettingsScreen(
                 }
 
                 // Smart Duplicate Detection & Conflict Resolution Entry
+                val goldAccent = adaptiveGoldColor()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
                         .background(
-                            if (duplicateGroupCount > 0) ChampagneGold.copy(alpha = 0.14f)
+                            if (duplicateGroupCount > 0) goldAccent.copy(alpha = 0.14f)
                             else MaterialTheme.colorScheme.surfaceContainerHigh
                         )
                         .border(
                             0.8.dp,
-                            if (duplicateGroupCount > 0) ChampagneGold.copy(alpha = 0.55f)
+                            if (duplicateGroupCount > 0) goldAccent.copy(alpha = 0.55f)
                             else MaterialTheme.colorScheme.outlineVariant,
                             RoundedCornerShape(14.dp)
                         )
@@ -285,7 +287,7 @@ fun SettingsScreen(
                     Icon(
                         imageVector = Icons.Rounded.CompareArrows,
                         contentDescription = null,
-                        tint = if (duplicateGroupCount > 0) Color(0xFFB37828) else MaterialTheme.colorScheme.primary,
+                        tint = if (duplicateGroupCount > 0) goldAccent else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
                     Column(modifier = Modifier.weight(1f)) {
@@ -402,12 +404,13 @@ fun SettingsScreen(
                 subtitle = "自动过滤语音备忘录、系统铃声与聊天碎音频，只保留纯净音乐"
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val filterGold = adaptiveGoldColor()
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("最短曲目时长过滤", style = MaterialTheme.typography.bodyMedium)
-                        Text("${scanFilter.minDurationSec} 秒", style = MaterialTheme.typography.labelMedium, color = ChampagneGold)
+                        Text("${scanFilter.minDurationSec} 秒", style = MaterialTheme.typography.labelMedium, color = filterGold)
                     }
                     Slider(
                         value = scanFilter.minDurationSec.toFloat(),
@@ -423,7 +426,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("最小文件体积过滤", style = MaterialTheme.typography.bodyMedium)
-                        Text("${scanFilter.minSizeKb} KB", style = MaterialTheme.typography.labelMedium, color = ChampagneGold)
+                        Text("${scanFilter.minSizeKb} KB", style = MaterialTheme.typography.labelMedium, color = filterGold)
                     }
                     Slider(
                         value = scanFilter.minSizeKb.toFloat(),
@@ -643,6 +646,7 @@ fun SettingsScreen(
                     )
                 }
 
+                val lyricGold = adaptiveGoldColor()
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -651,7 +655,7 @@ fun SettingsScreen(
                     Text(
                         text = lyricSettings.fontWeightLabel,
                         style = MaterialTheme.typography.labelMedium,
-                        color = ChampagneGold
+                        color = lyricGold
                     )
                 }
                 Slider(
@@ -676,7 +680,7 @@ fun SettingsScreen(
                     Text(
                         text = lyricFontScaleLabel(snappedScale),
                         style = MaterialTheme.typography.labelMedium,
-                        color = ChampagneGold
+                        color = lyricGold
                     )
                 }
                 Row(
@@ -692,12 +696,12 @@ fun SettingsScreen(
                                 .weight(1f)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(
-                                    if (isSelected) ChampagneGold.copy(alpha = 0.22f)
+                                    if (isSelected) lyricGold.copy(alpha = 0.18f)
                                     else MaterialTheme.colorScheme.surfaceContainerHigh
                                 )
                                 .border(
                                     width = if (isSelected) 1.dp else 0.5.dp,
-                                    color = if (isSelected) ChampagneGold else MaterialTheme.colorScheme.outlineVariant,
+                                    color = if (isSelected) lyricGold else MaterialTheme.colorScheme.outlineVariant,
                                     shape = RoundedCornerShape(10.dp)
                                 )
                                 .clickable {
@@ -712,7 +716,7 @@ fun SettingsScreen(
                                 text = tierLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) ChampagneGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = if (isSelected) lyricGold else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1
                             )
                         }
@@ -726,7 +730,7 @@ fun SettingsScreen(
                 ) {
                     LyricSource.entries.forEach { src ->
                         val selected = lyricSettings.activeOnlineSource == src
-                        val srcColor = Color(src.accentHex)
+                        val srcColor = adaptiveLyricSourceColor(src)
                         FilterChip(
                             selected = selected,
                             onClick = {
@@ -734,7 +738,7 @@ fun SettingsScreen(
                             },
                             label = { Text(src.displayName) },
                             colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = srcColor.copy(alpha = 0.22f),
+                                selectedContainerColor = srcColor.copy(alpha = 0.20f),
                                 selectedLabelColor = srcColor
                             ),
                             modifier = Modifier.testTag("settings_lyric_src_${src.id}")
@@ -921,6 +925,7 @@ fun SettingsScreen(
                                 .padding(end = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
+                            val enhanceGold = adaptiveGoldColor()
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -928,7 +933,7 @@ fun SettingsScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.AutoAwesome,
                                     contentDescription = null,
-                                    tint = if (visualEffectsEnhanced) RubyAccent else ChampagneGold,
+                                    tint = if (visualEffectsEnhanced) RubyAccent else enhanceGold,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
@@ -942,14 +947,14 @@ fun SettingsScreen(
                                         .clip(RoundedCornerShape(50))
                                         .background(
                                             if (visualEffectsEnhanced) RubyAccent.copy(alpha = 0.18f)
-                                            else ChampagneGold.copy(alpha = 0.16f)
+                                            else enhanceGold.copy(alpha = 0.16f)
                                         )
                                         .padding(horizontal = 7.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = if (visualEffectsEnhanced) "旗舰光影已开启" else "旗舰光影",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = if (visualEffectsEnhanced) RubyAccent else ChampagneGold,
+                                        color = if (visualEffectsEnhanced) RubyAccent else enhanceGold,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1
                                     )
@@ -975,7 +980,7 @@ fun SettingsScreen(
                     }
 
                     // Inline Performance & Battery Overhead Advisory
-                    val warningAccent = if (darkTheme) ChampagneGold else Color(0xFFB36B12)
+                    val warningAccent = adaptiveGoldColor()
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1158,7 +1163,7 @@ fun SettingsScreen(
                             Text(
                                 text = "•",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = ChampagneGold,
+                                color = adaptiveGoldColor(),
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
@@ -1331,10 +1336,11 @@ fun SettingsScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.Top
                                     ) {
+                                        val releaseGold = adaptiveGoldColor()
                                         Text(
                                             text = "•",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = if (isCurrent) RubyAccent else ChampagneGold,
+                                            color = if (isCurrent) RubyAccent else releaseGold,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
@@ -1350,14 +1356,15 @@ fun SettingsScreen(
 
                     // Pre-v0.9.0 GitHub Origin & Evolution Storyline Card
                     item(key = "pre_release_origin") {
+                        val originGold = adaptiveGoldColor()
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(18.dp))
-                                .background(ChampagneGold.copy(alpha = 0.08f))
+                                .background(originGold.copy(alpha = 0.09f))
                                 .border(
                                     width = 0.75.dp,
-                                    color = ChampagneGold.copy(alpha = 0.40f),
+                                    color = originGold.copy(alpha = 0.42f),
                                     shape = RoundedCornerShape(18.dp)
                                 )
                                 .padding(14.dp),
@@ -1371,19 +1378,19 @@ fun SettingsScreen(
                                     text = "v0.9.0 之前 · 早期演进脉络",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = ChampagneGold
+                                    color = originGold
                                 )
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(50))
-                                        .background(ChampagneGold.copy(alpha = 0.18f))
+                                        .background(originGold.copy(alpha = 0.16f))
                                         .padding(horizontal = 8.dp, vertical = 2.dp)
                                 ) {
                                     Text(
                                         text = "版本溯源",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = ChampagneGold
+                                        color = originGold
                                     )
                                 }
                             }

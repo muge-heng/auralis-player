@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.5"
-    const val PREVIOUS_VERSION = "0.9.4"
+    const val CURRENT_VERSION = "0.9.6"
+    const val PREVIOUS_VERSION = "0.9.5"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,19 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.5",
+            version = "0.9.6",
             tag = "当前版本",
+            title = "Liquid Glass 默认底栏与跟手拖动切换 · 浅色玻璃与深金色全面精修",
+            highlights = listOf(
+                "正式将全透明悬浮「Liquid Glass 底栏」设为应用默认底栏，并新增类似 Apple 液态玻璃风格的按住拖动交互：按住任意标签左右滑动时，液态玻璃透镜实时膨胀跟手跟随、跨越页签触发阻尼触觉刻度与高亮预览，松手后再顺滑切换页面。",
+                "彻底修复浅色主题开启「实时视觉效果增强」后，多个页面底栏与迷你播放栏边缘或空隙处泛光计算错误呈现黑色暗晕的问题，重构离屏画布背景录制顺序与 AGSL 预乘透明通道合成，让浅色液态玻璃清透如冰晶。",
+                "全应用浅色模式黄色/金色视觉系统升级：全局所有金色标签、Hi-Res 徽章、歌单统计、歌词字重字号指示、AI 窗口/附件徽章与提示条在浅色模式下统一切换为高对比度深琥珀金，彻底告别过浅看不清的问题。",
+                "细节打磨：普通音频区说明卡片新增可记忆状态的关闭（×）按钮，全应用三点菜单项统一配齐轻量化 16dp 矢量图标并整齐对齐。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.5",
+            tag = "历史版本",
             title = "播放页下滑手势根治 · 普通音频专属播放模式与菜单精修",
             highlights = listOf(
                 "彻底修复播放页快速下滑收起时因视图同步下移导致的坐标速度反算失真问题：改用屏幕空间累计位移采样并衔接指尖初速度，无论是短距轻甩还是长距快滑都能干脆收起，同时扩大标题与信息区的下滑触发范围。",

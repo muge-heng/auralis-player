@@ -55,9 +55,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.model.AiCatalogAttachmentPrefs
 import com.example.model.Track
-import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -329,13 +329,13 @@ fun AiCatalogPickerSheet(
                                     Box(
                                         modifier = Modifier
                                             .clip(CircleShape)
-                                            .background(ChampagneGold.copy(alpha = 0.22f))
+                                            .background(adaptiveGoldColor().copy(alpha = 0.22f))
                                             .padding(horizontal = 6.dp, vertical = 1.dp)
                                     ) {
                                         Text(
                                             text = "正在播放",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = ChampagneGold,
+                                            color = adaptiveGoldColor(),
                                             fontWeight = FontWeight.Bold
                                         )
                                     }

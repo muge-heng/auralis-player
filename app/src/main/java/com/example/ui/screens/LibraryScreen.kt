@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -108,6 +109,7 @@ import com.example.ui.components.QualityBadgePill
 import com.example.ui.components.TrackArtwork
 import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.RubyAccent
+import com.example.ui.theme.adaptiveGoldColor
 
 enum class LibraryViewTab(val label: String) {
     TRACKS("歌曲"),
@@ -123,6 +125,7 @@ fun LibraryScreen(
     generalAudioTracks: List<Track>,
     filteredGeneralAudioTracks: List<Track>,
     showHeroBanner: Boolean,
+    showGeneralAudioNotice: Boolean = true,
     enableGeneralAudioMode: Boolean,
     currentTrackId: String?,
     isPlaying: Boolean,
@@ -140,6 +143,7 @@ fun LibraryScreen(
     onImportAudioFiles: () -> Unit,
     onImportFolder: () -> Unit,
     onHideHeroBanner: () -> Unit,
+    onDismissGeneralAudioNotice: () -> Unit = {},
     onSetTracksGeneralAudio: (List<String>, Boolean) -> Unit,
     onPlayTrack: (Track, List<Track>) -> Unit,
     onPlayAll: (List<Track>, Boolean) -> Unit,
@@ -257,7 +261,7 @@ fun LibraryScreen(
                             onClick = onOpenAiStudio,
                             modifier = Modifier.testTag("compact_open_ai")
                         ) {
-                            Icon(Icons.Rounded.AutoAwesome, contentDescription = "AI 导赏", tint = ChampagneGold)
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = "AI 导赏", tint = adaptiveGoldColor())
                         }
                     }
                 }
@@ -354,12 +358,13 @@ fun LibraryScreen(
         // Smart Duplicate Conflict Alert Banner
         if (duplicateGroupCount > 0) {
             item(key = "duplicate_conflict_banner") {
+                val dupGold = adaptiveGoldColor()
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(16.dp))
-                        .background(ChampagneGold.copy(alpha = 0.14f))
-                        .border(0.8.dp, ChampagneGold.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .background(dupGold.copy(alpha = 0.14f))
+                        .border(0.8.dp, dupGold.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
                         .clickable(onClick = onOpenDuplicateManager)
                         .padding(horizontal = 14.dp, vertical = 11.dp)
                         .testTag("library_duplicate_banner"),
@@ -370,13 +375,13 @@ fun LibraryScreen(
                         modifier = Modifier
                             .size(34.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(ChampagneGold.copy(alpha = 0.24f)),
+                            .background(dupGold.copy(alpha = 0.22f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.CompareArrows,
                             contentDescription = null,
-                            tint = Color(0xFFB37828),
+                            tint = dupGold,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -431,7 +436,7 @@ fun LibraryScreen(
                             Text(
                                 text = "${scanProgress.matchedCount} 首",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = ChampagneGold
+                                color = adaptiveGoldColor()
                             )
                         }
                         LinearProgressIndicator(
@@ -465,7 +470,7 @@ fun LibraryScreen(
                 )
             }
         } else {
-            if (effectiveViewingGeneral) {
+            if (effectiveViewingGeneral && showGeneralAudioNotice) {
                 item(key = "general_audio_notice") {
                     Row(
                         modifier = Modifier
@@ -473,7 +478,8 @@ fun LibraryScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f))
                             .border(0.6.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                            .padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 6.dp)
+                            .testTag("general_audio_notice_card"),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -486,8 +492,22 @@ fun LibraryScreen(
                         Text(
                             text = "普通音频区：收录录音、播客或未验证元数据的本地音频，独立播放且不参与歌单与 AI 策展。可在右侧菜单随时「标记为音乐」。",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
                         )
+                        IconButton(
+                            onClick = onDismissGeneralAudioNotice,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("dismiss_general_audio_notice")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = "关闭提示",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -707,7 +727,7 @@ fun LibraryScreen(
                                 Text(
                                     text = "批量管理 · 已选 ${selectedIds.size} / ${activeFilteredTracks.size} 首",
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = ChampagneGold,
+                                    color = adaptiveGoldColor(),
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 TextButton(
@@ -836,6 +856,14 @@ fun LibraryScreen(
                                                 else "移至普通音频区"
                                             )
                                         },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.SwapHoriz,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
                                         onClick = {
                                             dismiss()
                                             onSetTracksGeneralAudio(listOf(track.id), !track.isGeneralAudio)
@@ -931,6 +959,14 @@ fun LibraryScreen(
                                 DropdownMenu(expanded = folderMenu, onDismissRequest = { folderMenu = false }) {
                                     DropdownMenuItem(
                                         text = { Text("一键加入歌单...") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
                                         onClick = {
                                             folderMenu = false
                                             pendingPlaylistTargetIds = tracks.map { it.id }
@@ -938,13 +974,29 @@ fun LibraryScreen(
                                     )
                                     DropdownMenuItem(
                                         text = { Text("加入播放队列") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.QueueMusic,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
                                         onClick = {
                                             folderMenu = false
                                             onAppendToQueue(tracks)
                                         }
                                     )
                                     DropdownMenuItem(
-                                        text = { Text("从曲库移除此目录曲目") },
+                                        text = { Text("从曲库移除此目录曲目", color = RubyAccent) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Rounded.DeleteOutline,
+                                                contentDescription = null,
+                                                tint = RubyAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
                                         onClick = {
                                             folderMenu = false
                                             onBatchRemoveFromLibrary(tracks.map { it.id })
@@ -1506,6 +1558,14 @@ fun TrackListItem(
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
                         text = { Text(if (isGeneralAudio) "下一条播放" else "下一首播放") },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.PlaylistPlay,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
                         onClick = {
                             menuExpanded = false
                             onPlayNext()
@@ -1514,6 +1574,14 @@ fun TrackListItem(
                     if (onAppendToQueue != null) {
                         DropdownMenuItem(
                             text = { Text("加入播放队列") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.QueueMusic,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
                             onClick = {
                                 menuExpanded = false
                                 onAppendToQueue()
@@ -1524,6 +1592,14 @@ fun TrackListItem(
                         if (onOpenPlaylistPicker != null) {
                             DropdownMenuItem(
                                 text = { Text("加入歌单...") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
                                 onClick = {
                                     menuExpanded = false
                                     onOpenPlaylistPicker()
@@ -1533,6 +1609,14 @@ fun TrackListItem(
                             playlists.take(5).forEach { pl ->
                                 DropdownMenuItem(
                                     text = { Text("加入歌单：${pl.playlist.name}") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
                                     onClick = {
                                         menuExpanded = false
                                         onAddToPlaylist(pl.playlist.id)
@@ -1547,8 +1631,8 @@ fun TrackListItem(
                                     Icon(
                                         imageVector = Icons.Rounded.Album,
                                         contentDescription = null,
-                                        tint = ChampagneGold,
-                                        modifier = Modifier.size(18.dp)
+                                        tint = adaptiveGoldColor(),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 },
                                 onClick = {
@@ -1566,7 +1650,7 @@ fun TrackListItem(
                                         imageVector = Icons.Rounded.FileDownload,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 },
                                 onClick = {
@@ -1585,7 +1669,7 @@ fun TrackListItem(
                                     imageVector = Icons.Rounded.Info,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             },
                             onClick = {
@@ -1603,7 +1687,7 @@ fun TrackListItem(
                                     imageVector = Icons.Rounded.Share,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             },
                             onClick = {
@@ -1620,6 +1704,14 @@ fun TrackListItem(
                                 Text(
                                     if (isGeneralAudio) "从普通音频列表移出" else "从曲库列表移出",
                                     color = RubyAccent
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.DeleteOutline,
+                                    contentDescription = null,
+                                    tint = RubyAccent,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             },
                             onClick = {
@@ -1705,6 +1797,14 @@ private fun GroupedCollectionCard(
             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                 DropdownMenuItem(
                     text = { Text("一键加入歌单...") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
                     onClick = {
                         menuExpanded = false
                         onAddToPlaylist()
@@ -1712,6 +1812,14 @@ private fun GroupedCollectionCard(
                 )
                 DropdownMenuItem(
                     text = { Text("全部加入播放队列") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.QueueMusic,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
                     onClick = {
                         menuExpanded = false
                         onAppendQueue()
