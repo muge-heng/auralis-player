@@ -68,7 +68,7 @@ enum class ReasoningEffortLevel(
 
 enum class NavBarStyle(val label: String, val subtitle: String) {
     CLASSIC("经典底栏", "标准 Material 3 贴底四段式导航栏"),
-    FLOATING_GLASS("Liquid Glass 悬浮底栏", "Apple 液态玻璃质感悬浮胶囊底栏与灵动滑块")
+    FLOATING_GLASS("Liquid Glass 底栏", "液态玻璃悬浮胶囊与灵动滑块")
 }
 
 data class ScanFilterConfig(
@@ -276,14 +276,14 @@ enum class DeletionGuardMode(
     val subtitle: String
 ) {
     CONFIRM_DIALOG(
-        label = "删除前二次确认弹窗",
+        label = "删除前二次确认",
         shortLabel = "二次确认",
-        subtitle = "删除预设、AI 对话、歌单或曲目前弹出确认窗口，杜绝误触"
+        subtitle = "删除预设、AI 对话、歌单或曲目前弹出确认窗，彻底杜绝误触"
     ),
     TOP_UNDO_BANNER(
-        label = "置顶可撤销提示条（可划掉）",
+        label = "置顶可撤销提示条",
         shortLabel = "置顶撤销",
-        subtitle = "删除后立即在顶部滑出悬浮条，提供一键撤销并支持左右或上滑关闭"
+        subtitle = "删除后在顶部滑出悬浮条，6 秒内支持一键撤销或左右/上滑关闭"
     );
 
     companion object {

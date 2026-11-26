@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,7 +28,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.CreateNewFolder
@@ -40,8 +44,10 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +77,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AiConfig
@@ -828,7 +835,9 @@ fun SettingsScreen(
 
                 Text("底部四段导航栏样式", style = MaterialTheme.typography.labelLarge)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Max),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     NavBarStyle.entries.forEach { style ->
@@ -836,6 +845,7 @@ fun SettingsScreen(
                         Column(
                             modifier = Modifier
                                 .weight(1f)
+                                .fillMaxHeight()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(
                                     if (selected) RubyAccent.copy(alpha = 0.14f)
@@ -849,19 +859,22 @@ fun SettingsScreen(
                                 .clickable { onSetNavBarStyle(style) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp)
                                 .testTag("settings_nav_style_${style.name.lowercase()}"),
-                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
                                 text = style.label,
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface
+                                color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Text(
                                 text = style.subtitle,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -869,22 +882,27 @@ fun SettingsScreen(
             }
         }
 
-        // Unified Deletion Guard Mode Setting Card
+        // Unified Deletion Guard Mode Setting Card (Full-width stacked option rows — zero cramped wrapping)
         item {
             SettingsCard(
                 icon = Icons.Rounded.Shield,
                 title = "防误删保护机制",
                 subtitle = "统一守护自定义 EQ 预设、AI 对话记录、歌单曲目与曲库移出等全部删除操作"
             ) {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     DeletionGuardMode.entries.forEach { mode ->
                         val selected = deletionGuardMode == mode
-                        Column(
+                        val optionIcon = if (mode == DeletionGuardMode.CONFIRM_DIALOG) {
+                            Icons.Rounded.VerifiedUser
+                        } else {
+                            Icons.AutoMirrored.Rounded.Undo
+                        }
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
+                                .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(
                                     if (selected) RubyAccent.copy(alpha = 0.14f)
@@ -896,34 +914,57 @@ fun SettingsScreen(
                                     shape = RoundedCornerShape(14.dp)
                                 )
                                 .clickable { onSetDeletionGuardMode(mode) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
                                 .testTag("settings_deletion_guard_${mode.name.lowercase()}"),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = mode.label,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = mode.subtitle,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 3
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) RubyAccent.copy(alpha = 0.20f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = optionIcon,
+                                    contentDescription = null,
+                                    tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = mode.label,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = mode.subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(
+                                imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = if (selected) "已选中" else "未选中",
+                                tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
                 }
-                Text(
-                    text = if (deletionGuardMode == DeletionGuardMode.CONFIRM_DIALOG) {
-                        "当前模式：删除前强制弹出确认框，彻底杜绝误触丢失。"
-                    } else {
-                        "当前模式：执行删除后在屏幕顶部弹出置顶提示条，支持 6 秒内一键无损撤销，或左右/上滑关闭。"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
         }
 
@@ -1016,7 +1057,11 @@ fun SettingsScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("查看完整版本日志与早期演进脉络（共 ${AppVersionInfo.RELEASE_NOTES.size} 个公开版本）")
+                    Text(
+                        text = "查看完整版本日志（共 ${AppVersionInfo.RELEASE_NOTES.size} 个公开版本）",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

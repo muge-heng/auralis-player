@@ -54,8 +54,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -92,6 +90,7 @@ import com.example.ui.components.LiquidGlassNavItem
 import com.example.ui.components.MiniPlayerBar
 import com.example.ui.components.MorphingFloatingArtwork
 import com.example.ui.components.SmartScanConfirmDialog
+import com.example.ui.components.TopStatusToast
 import com.example.ui.components.TopUndoBanner
 import com.example.ui.screens.AiChatScreen
 import com.example.ui.screens.DuplicateManagerSheet
@@ -183,7 +182,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val context = LocalContext.current
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
 
     val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
     val auraPalette by viewModel.auraPalette.collectAsStateWithLifecycle()
@@ -283,14 +281,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         if (openNowPlayingTrigger) {
             expandNowPlaying()
             viewModel.consumeOpenNowPlayingTrigger()
-        }
-    }
-
-    LaunchedEffect(statusBanner) {
-        statusBanner?.let { msg ->
-            snackbarHostState.currentSnackbarData?.dismiss()
-            snackbarHostState.showSnackbar(msg, duration = androidx.compose.material3.SnackbarDuration.Short)
-            viewModel.dismissBanner()
         }
     }
 
@@ -498,7 +488,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         }
 
         Scaffold(
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
@@ -637,7 +626,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onHideHeroBanner = {
                                 viewModel.haptics.tickLight()
                                 viewModel.setShowLibraryHero(false)
-                                viewModel.showBanner("已隐藏首页顶部卡片，可随时在「工坊」重新显示或导入音频")
                             },
                             onSetTracksGeneralAudio = viewModel::setTracksGeneralAudio,
                             onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
@@ -748,7 +736,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onPlayCuratedTitles = { titles ->
                                 viewModel.playCuratedTracks(titles)
                             },
-                            onCopiedNotice = viewModel::showBanner,
+                            onCopiedNotice = { msg -> viewModel.showBanner(msg) },
                             contentBottomPadding = 0
                         )
 
@@ -875,7 +863,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     onStartSleepTimer = { mins ->
                         viewModel.haptics.tickLight()
                         viewModel.playbackController.startSleepTimer(mins)
-                        viewModel.showBanner(if (mins > 0) "睡眠定时已设定：$mins 分钟后柔和淡出" else "已关闭睡眠定时")
                     },
                     onJumpQueueIndex = { idx ->
                         viewModel.haptics.springImpact()
@@ -1006,10 +993,19 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
             )
         }
 
-        // Global Top-Pinned Swipeable Undo Deletion Banner (floats above screens, Equalizer & NowPlaying)
+        // Global Top-Pinned Swipeable Undo Deletion Banner (takes priority at top)
         TopUndoBanner(
             state = undoBanner,
             onDismiss = viewModel::dismissUndoBanner,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+        )
+
+        // Global Top-Pinned Swipeable Lightweight Status Toast (never covers bottom controls)
+        TopStatusToast(
+            state = if (undoBanner == null) statusBanner else null,
+            onDismiss = viewModel::dismissBanner,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .statusBarsPadding()

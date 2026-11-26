@@ -505,15 +505,36 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 3)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 4)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
+    }
+
+    @Test
+    fun statusToastLevelInfersSemanticUrgencyAccurately() {
+        assertEquals(
+            com.example.ui.components.StatusToastLevel.ERROR,
+            com.example.ui.components.inferStatusToastLevel("刻录写入失败：系统拒绝写入")
+        )
+        assertEquals(
+            com.example.ui.components.StatusToastLevel.WARNING,
+            com.example.ui.components.inferStatusToastLevel("未授予本地音频权限")
+        )
+        assertEquals(
+            com.example.ui.components.StatusToastLevel.SUCCESS,
+            com.example.ui.components.inferStatusToastLevel("已导出歌词文件：song.lrc")
+        )
+        assertEquals(
+            com.example.ui.components.StatusToastLevel.INFO,
+            com.example.ui.components.inferStatusToastLevel("所选曲目均已在该歌单中")
+        )
     }
 
     @Test

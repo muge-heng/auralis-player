@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.2"
-    const val PREVIOUS_VERSION = "0.9.1"
+    const val CURRENT_VERSION = "0.9.3"
+    const val PREVIOUS_VERSION = "0.9.2"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,18 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.2",
+            version = "0.9.3",
             tag = "当前版本",
+            title = "顶部可划走轻提示 · 大幅精简通知频次 · 设置排布精修",
+            highlights = listOf(
+                "移除底部白底且无法划走的原生提示条，全面替换为顶部悬浮轻量提示卡片：深浅主题自适应、支持左右或上滑手势随时划走，彻底杜绝遮挡底栏、迷你播放器与 AI 输入区。",
+                "大幅精简高频非必要提示：常规开关切换、均衡器预设点击、队列调序、红心收藏、歌单编辑与弹窗确认删除等即时可见操作均静默配合触觉反馈，仅在异步导入/去重、歌词刻录导出或异常提醒时出现轻提示。",
+                "优化「防误删保护机制」为全宽上下选项行，修复标题异常折断与双卡高低不齐问题，并同步对齐「底部四段导航栏样式」双卡等高与单行排版。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.2",
+            tag = "历史版本",
             title = "歌词刻录与导出 · 双模式防误删保护机制",
             highlights = listOf(
                 "歌曲列表「更多」菜单新增「刻录歌词到音频文件」，支持将已获取的歌词直接写入 MP3 (ID3v2 USLT)、FLAC (Vorbis LYRICS)、M4A/MP4 (©lyr) 原音频文件标签中补齐元数据，无损保留音质与封面。",

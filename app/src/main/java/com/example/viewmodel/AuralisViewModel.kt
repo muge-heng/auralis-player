@@ -81,7 +81,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 import com.example.ui.components.PendingConfirmDeletion
+import com.example.ui.components.StatusToastLevel
+import com.example.ui.components.StatusToastState
 import com.example.ui.components.UndoBannerState
+import com.example.ui.components.inferStatusToastLevel
 
 private const val TAG = "AuralisViewModel"
 
@@ -343,8 +346,8 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     private val aiSessionJobs = mutableMapOf<Long, Job>()
 
-    private val _statusBanner = MutableStateFlow<String?>(null)
-    val statusBanner: StateFlow<String?> = _statusBanner.asStateFlow()
+    private val _statusBanner = MutableStateFlow<StatusToastState?>(null)
+    val statusBanner: StateFlow<StatusToastState?> = _statusBanner.asStateFlow()
 
     private val _undoBanner = MutableStateFlow<UndoBannerState?>(null)
     val undoBanner: StateFlow<UndoBannerState?> = _undoBanner.asStateFlow()
@@ -428,8 +431,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         _statusBanner.value = null
     }
 
-    fun showBanner(msg: String) {
-        _statusBanner.value = msg
+    fun showBanner(msg: String, level: StatusToastLevel = inferStatusToastLevel(msg)) {
+        if (msg.isBlank()) return
+        _statusBanner.value = StatusToastState(message = msg, level = level)
     }
 
     fun updateSearchQuery(query: String) {
@@ -651,11 +655,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     // =========================================================================
 
     fun dismissImportConflicts() {
-        val count = _pendingImportConflicts.value.size
         _pendingImportConflicts.value = emptyList()
-        if (count > 0) {
-            showBanner("已跳过 $count 首音质差异曲目，保留曲库原有版本")
-        }
     }
 
     fun resolveImportConflicts(decisions: Map<String, ImportConflictDecision>) {
@@ -736,7 +736,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 demoteLosersToGeneral = false,
                 promoteWinnerToMusic = group.tracks.any { !it.isGeneralAudio }
             )
-            showBanner("「${group.displayTitle}」已保留所选版本并移出 ${losers.size} 个重复项（本机文件未删）")
         }
     }
 
@@ -753,7 +752,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 demoteLosersToGeneral = true,
                 promoteWinnerToMusic = true
             )
-            showBanner("「${group.displayTitle}」已精选主版留音乐区，其余 ${others.size} 个归入普通音频区")
         }
     }
 
@@ -923,7 +921,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun playNextInQueue(track: Track) {
         haptics.tickLight()
         playbackController.addTrackNextInQueue(track)
-        showBanner("已将「${track.title}」加入下一首播放")
     }
 
     fun togglePlayPause() {
@@ -1147,7 +1144,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 _currentLyric.value = parsed
             }
             haptics.harmonicChime()
-            showBanner("已绑定 ${parsed.format.label} 歌词（共 ${parsed.lines.size} 行）")
         }
     }
 
@@ -1180,7 +1176,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         if (tracks.isEmpty()) return
         haptics.tickLight()
         playbackController.appendTracksToQueue(tracks)
-        showBanner("已将 ${tracks.size} 首曲目加入播放队列")
     }
 
     fun removeQueueIndex(index: Int) {
@@ -1191,19 +1186,17 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun moveQueueIndexToNext(index: Int) {
         haptics.tickLight()
         playbackController.moveQueueItemToNext(index)
-        showBanner("已调至下一首播放")
     }
 
     fun clearUpcomingQueue() {
         haptics.tickLight()
         playbackController.clearUpcomingQueue()
-        showBanner("已清空后续待播队列")
     }
 
     fun saveQueueAsPlaylist(name: String) {
         val queueIds = playbackState.value.queue.map { it.id }
         if (queueIds.isEmpty()) return
-        createPlaylist(name, "来自当前待播队列 (${queueIds.size} 首)", queueIds)
+        createPlaylist(name, "来自当前待播队列 (${queueIds.size} 首)", queueIds, showToast = true)
     }
 
     fun batchFavoriteTracks(trackIds: List<String>, favorite: Boolean) {
@@ -1217,7 +1210,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             if (current != null && current.id in trackIds) {
                 playbackController.syncTrackMetadataUpdate(current.copy(isFavorite = favorite))
             }
-            showBanner(if (favorite) "已将 ${trackIds.size} 首设为红心挚爱" else "已取消 ${trackIds.size} 首红心")
         }
     }
 
@@ -1235,10 +1227,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             if (current != null && current.id in trackIds) {
                 playbackController.syncTrackMetadataUpdate(current.copy(isGeneralAudio = isGeneralAudio))
             }
-            showBanner(
-                if (isGeneralAudio) "已将 ${trackIds.size} 项归入「普通音频区」（不混入音乐歌单与 AI 分析）"
-                else "已将 ${trackIds.size} 项标记为「音乐曲库」"
-            )
         }
     }
 
@@ -1271,18 +1259,16 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 val undoAction = performDeleteAndBuildUndo()
                 onExecuteConfirmed?.invoke()
                 if (showTopUndo && undoAction != null) {
+                    _statusBanner.value = null
                     _undoBanner.value = UndoBannerState(
                         message = deletedSummary,
                         onUndo = {
                             viewModelScope.launch {
                                 undoAction()
                                 haptics.harmonicChime()
-                                showBanner("已恢复：$restoredSummary")
                             }
                         }
                     )
-                } else {
-                    showBanner(deletedSummary)
                 }
             }
         }
@@ -1438,7 +1424,12 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Playlists
-    fun createPlaylist(name: String, description: String = "", initialTrackIds: List<String> = emptyList()) {
+    fun createPlaylist(
+        name: String,
+        description: String = "",
+        initialTrackIds: List<String> = emptyList(),
+        showToast: Boolean = false
+    ) {
         val trimmed = name.trim()
         if (trimmed.isBlank()) return
         viewModelScope.launch {
@@ -1450,7 +1441,12 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 playlistDao.addTracksToPlaylist(refs)
             }
             haptics.harmonicChime()
-            showBanner("已创建歌单「$trimmed」" + if (initialTrackIds.isNotEmpty()) "（含 ${initialTrackIds.distinct().size} 首）" else "")
+            if (showToast) {
+                showBanner(
+                    "已创建歌单「$trimmed」" + if (initialTrackIds.isNotEmpty()) "（含 ${initialTrackIds.distinct().size} 首）" else "",
+                    StatusToastLevel.SUCCESS
+                )
+            }
         }
     }
 
@@ -1460,7 +1456,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             playlistDao.updatePlaylistInfo(playlistId, trimmed, description.trim())
             haptics.tickLight()
-            showBanner("已更新歌单信息")
         }
     }
 
@@ -1492,7 +1487,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             prefs.updatePlaylistCoverConfig(collectionKey, config)
             haptics.tickLight()
-            showBanner(if (config == null || config.isDefault) "已恢复默认歌单封面" else "已更新歌单封面样式")
         }
     }
 
@@ -1534,10 +1528,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             if (newRefs.isNotEmpty()) {
                 playlistDao.addTracksToPlaylist(newRefs)
                 haptics.harmonicChime()
-                showBanner("已加入歌单（新增 ${newRefs.size} 首）")
             } else {
                 haptics.tickLight()
-                showBanner("所选曲目均已在该歌单中")
+                showBanner("所选曲目均已在该歌单中", StatusToastLevel.INFO)
             }
         }
     }
@@ -1837,7 +1830,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun setDeletionGuardMode(mode: DeletionGuardMode) = viewModelScope.launch {
         haptics.tickLight()
         prefs.setDeletionGuardMode(mode)
-        showBanner("删除保护已切换为：${mode.shortLabel}")
     }
     fun setHapticProfile(profile: HapticProfile) = viewModelScope.launch {
         prefs.setHapticProfile(profile)
@@ -1871,7 +1863,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 virtualizerPercent = preset.virtualizerPercent
             )
         )
-        showBanner("已应用 10 段声学预设：${preset.name}")
     }
 
     fun saveCustomEqPreset(name: String, state: EqState) {
@@ -1895,7 +1886,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     bandLevelsDb = preset.bandLevelsDb
                 )
             )
-            showBanner("已保存自定义预设：${preset.name}")
         }
     }
 
@@ -1941,14 +1931,12 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     virtualizerPercent = savedPreset.virtualizerPercent
                 )
             )
-            showBanner("已应用并保存 AI 声学预设：${savedPreset.name}")
         }
     }
 
     fun updateAiConfig(config: AiConfig) = viewModelScope.launch {
         prefs.updateAiConfig(config)
         haptics.tickLight()
-        showBanner("AI 模型配置已保存在本地")
     }
 
     fun toggleAiWebSearch() = viewModelScope.launch {
@@ -1956,7 +1944,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         val next = !current.enableWebSearch
         prefs.updateAiConfig(current.copy(enableWebSearch = next))
         haptics.tickLight()
-        showBanner(if (next) "已开启 DeepSeek 原生联网搜索（AI 按需自主检索）" else "已关闭联网搜索")
     }
 
     fun updateAiCatalogAttachmentPrefs(attachment: AiCatalogAttachmentPrefs) = viewModelScope.launch {
@@ -2015,10 +2002,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     reasoningEffort = nextEffort
                 )
             )
-            showBanner(
-                if (exists) "已隐藏扩展思考档位 ${level.apiValue}"
-                else "已开启扩展思考档位 ${level.apiValue} (${level.label})"
-            )
         }
     }
 
@@ -2037,7 +2020,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 )
             )
             _activeAiSessionId.value = newId
-            showBanner("已新建独立对话窗口 #$count")
         }
     }
 
@@ -2060,7 +2042,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         stopAiGeneration(sessionId)
         viewModelScope.launch {
             aiChatDao.clearSessionMessages(sessionId)
-            showBanner("已清空当前对话消息")
         }
     }
 
@@ -2287,7 +2268,6 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             val firstAssistant = msgs.firstOrNull { it.role == "assistant" }?.content
             if (showFeedbackToast) {
                 haptics.tickLight()
-                showBanner("正在用 AI 提炼对话标题...")
             }
             val res = aiChatClient.generateSessionTitle(config, firstUser, firstAssistant)
             res.fold(
@@ -2295,12 +2275,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     aiChatDao.renameSession(sessionId, title)
                     if (showFeedbackToast) {
                         haptics.harmonicChime()
-                        showBanner("已更新对话标题：「$title」")
                     }
                 },
                 onFailure = { err ->
                     if (showFeedbackToast) {
-                        showBanner("AI 标题生成失败：${err.localizedMessage ?: "请检查网络或配置"}")
+                        showBanner("AI 标题生成失败：${err.localizedMessage ?: "请检查网络或配置"}", StatusToastLevel.ERROR)
                     }
                 }
             )
@@ -2639,9 +2618,8 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             if (matched.isNotEmpty()) {
                 playAll(matched)
                 _openNowPlayingTrigger.value = true
-                showBanner("正在连播 ${matched.size} 首匹配曲目")
             } else {
-                showBanner("未在本地音乐曲库匹配到对应曲目")
+                showBanner("未在本地音乐曲库匹配到对应曲目", StatusToastLevel.WARNING)
             }
         }
     }
@@ -2650,14 +2628,15 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val matched = matchTracksFromLibraryByTitles(suggestion.trackTitles)
             if (matched.isEmpty()) {
-                showBanner("未能从本地音乐曲库匹配到歌单中的曲目")
+                showBanner("未能从本地音乐曲库匹配到歌单中的曲目", StatusToastLevel.WARNING)
                 return@launch
             }
             val desc = suggestion.description.ifBlank { "由 AI 音乐策展生成（共 ${matched.size} 首）" }
             createPlaylist(
                 name = suggestion.name,
                 description = desc,
-                initialTrackIds = matched.map { it.id }
+                initialTrackIds = matched.map { it.id },
+                showToast = true
             )
         }
     }
