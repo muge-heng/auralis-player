@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Checklist
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.rounded.CreateNewFolder
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
+import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -56,7 +58,6 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.Sort
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -147,6 +148,8 @@ fun LibraryScreen(
     onBatchAddToPlaylist: (Long, List<String>) -> Unit,
     onCreatePlaylistWithTracks: (String, String, List<String>) -> Unit,
     onBatchRemoveFromLibrary: (List<String>) -> Unit,
+    onBurnLyricsToAudio: (Track) -> Unit = {},
+    onExportTrackLyrics: (Track) -> Unit = {},
     duplicateGroupCount: Int = 0,
     duplicateRedundantCount: Int = 0,
     onOpenDuplicateManager: () -> Unit = {},
@@ -159,7 +162,6 @@ fun LibraryScreen(
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingPlaylistTargetIds by remember { mutableStateOf<List<String>?>(null) }
-    var pendingRemoveIds by remember { mutableStateOf<List<String>?>(null) }
 
     val showGeneralAudioSwitcher = enableGeneralAudioMode || generalAudioTracks.isNotEmpty()
     val effectiveViewingGeneral = showGeneralAudioSwitcher && viewingGeneralAudio
@@ -811,7 +813,9 @@ fun LibraryScreen(
                                 onOpenPlaylistPicker = if (effectiveViewingGeneral) null else {
                                     { pendingPlaylistTargetIds = listOf(track.id) }
                                 },
-                                onRemoveFromLibrary = { pendingRemoveIds = listOf(track.id) },
+                                onBurnLyricsToAudio = { onBurnLyricsToAudio(track) },
+                                onExportTrackLyrics = { onExportTrackLyrics(track) },
+                                onRemoveFromLibrary = { onBatchRemoveFromLibrary(listOf(track.id)) },
                                 customExtraMenuItems = { dismiss ->
                                     DropdownMenuItem(
                                         text = {
@@ -931,7 +935,7 @@ fun LibraryScreen(
                                         text = { Text("从曲库移除此目录曲目") },
                                         onClick = {
                                             folderMenu = false
-                                            pendingRemoveIds = tracks.map { it.id }
+                                            onBatchRemoveFromLibrary(tracks.map { it.id })
                                         }
                                     )
                                 }
@@ -1033,7 +1037,11 @@ fun LibraryScreen(
                     label = "移出",
                     enabled = hasSelection,
                     tint = RubyAccent,
-                    onClick = { pendingRemoveIds = selectedTracks.map { it.id } },
+                    onClick = {
+                        onBatchRemoveFromLibrary(selectedTracks.map { it.id })
+                        isSelectionMode = false
+                        selectedIds = emptySet()
+                    },
                     testTag = "batch_remove"
                 )
             }
@@ -1056,33 +1064,6 @@ fun LibraryScreen(
                 selectedIds = emptySet()
             },
             onDismiss = { pendingPlaylistTargetIds = null }
-        )
-    }
-
-    pendingRemoveIds?.let { removeIds ->
-        AlertDialog(
-            onDismissRequest = { pendingRemoveIds = null },
-            title = { Text("从曲库列表移除") },
-            text = {
-                Text("确定从 Auralis 曲库中移除所选的 ${removeIds.size} 首曲目吗？\n手机本地原始音频文件不会被删除，之后可随时通过智能扫描重新收录。")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        onBatchRemoveFromLibrary(removeIds)
-                        pendingRemoveIds = null
-                        isSelectionMode = false
-                        selectedIds = emptySet()
-                    }
-                ) {
-                    Text("确认移出")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingRemoveIds = null }) {
-                    Text("取消")
-                }
-            }
         )
     }
 }
@@ -1365,6 +1346,8 @@ fun TrackListItem(
     onLongClick: (() -> Unit)? = null,
     onAppendToQueue: (() -> Unit)? = null,
     onOpenPlaylistPicker: (() -> Unit)? = null,
+    onBurnLyricsToAudio: (() -> Unit)? = null,
+    onExportTrackLyrics: (() -> Unit)? = null,
     onRemoveFromLibrary: (() -> Unit)? = null,
     customExtraMenuItems: (@Composable (dismiss: () -> Unit) -> Unit)? = null
 ) {
@@ -1518,6 +1501,42 @@ fun TrackListItem(
                                 }
                             )
                         }
+                    }
+                    if (onBurnLyricsToAudio != null) {
+                        DropdownMenuItem(
+                            text = { Text("刻录歌词到音频文件") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Album,
+                                    contentDescription = null,
+                                    tint = ChampagneGold,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onBurnLyricsToAudio()
+                            },
+                            modifier = Modifier.testTag("track_menu_burn_lyrics")
+                        )
+                    }
+                    if (onExportTrackLyrics != null) {
+                        DropdownMenuItem(
+                            text = { Text("导出歌词文件") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.FileDownload,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
+                            onClick = {
+                                menuExpanded = false
+                                onExportTrackLyrics()
+                            },
+                            modifier = Modifier.testTag("track_menu_export_lyrics")
+                        )
                     }
                     customExtraMenuItems?.invoke { menuExpanded = false }
                     if (onRemoveFromLibrary != null) {

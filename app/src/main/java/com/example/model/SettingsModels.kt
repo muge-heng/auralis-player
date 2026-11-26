@@ -270,3 +270,28 @@ object PlaylistCoverKeys {
     fun artist(artistName: String): String = "artist:${artistName.trim()}"
 }
 
+enum class DeletionGuardMode(
+    val label: String,
+    val shortLabel: String,
+    val subtitle: String
+) {
+    CONFIRM_DIALOG(
+        label = "删除前二次确认弹窗",
+        shortLabel = "二次确认",
+        subtitle = "删除预设、AI 对话、歌单或曲目前弹出确认窗口，杜绝误触"
+    ),
+    TOP_UNDO_BANNER(
+        label = "置顶可撤销提示条（可划掉）",
+        shortLabel = "置顶撤销",
+        subtitle = "删除后立即在顶部滑出悬浮条，提供一键撤销并支持左右或上滑关闭"
+    );
+
+    companion object {
+        fun fromStored(raw: String?): DeletionGuardMode {
+            if (raw.isNullOrBlank()) return CONFIRM_DIALOG
+            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: CONFIRM_DIALOG
+        }
+    }
+}
+
+

@@ -14,6 +14,7 @@ import com.example.model.AiCatalogAttachmentPrefs
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
 import com.example.model.DEFAULT_AI_MAX_OUTPUT_TOKENS
+import com.example.model.DeletionGuardMode
 import com.example.model.EQ_BAND_COUNT
 import com.example.model.EqPreset
 import com.example.model.EqState
@@ -44,6 +45,7 @@ class PreferencesRepository(private val context: Context) {
         val NAV_BAR_STYLE = stringPreferencesKey("nav_bar_style")
         val SHOW_LIBRARY_HERO = booleanPreferencesKey("show_library_hero")
         val ENABLE_GENERAL_AUDIO_MODE = booleanPreferencesKey("enable_general_audio_mode")
+        val DELETION_GUARD_MODE = stringPreferencesKey("deletion_guard_mode")
 
         // Smart Scan Filter
         val MIN_DURATION_SEC = intPreferencesKey("scan_min_duration_sec")
@@ -118,6 +120,10 @@ class PreferencesRepository(private val context: Context) {
 
     val enableGeneralAudioModeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
         prefs[Keys.ENABLE_GENERAL_AUDIO_MODE] ?: true
+    }
+
+    val deletionGuardModeFlow: Flow<DeletionGuardMode> = context.auralisDataStore.data.map { prefs ->
+        DeletionGuardMode.fromStored(prefs[Keys.DELETION_GUARD_MODE])
     }
 
     val scanFilterFlow: Flow<ScanFilterConfig> = context.auralisDataStore.data.map { prefs ->
@@ -240,6 +246,10 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun setEnableGeneralAudioMode(enabled: Boolean) {
         context.auralisDataStore.edit { it[Keys.ENABLE_GENERAL_AUDIO_MODE] = enabled }
+    }
+
+    suspend fun setDeletionGuardMode(mode: DeletionGuardMode) {
+        context.auralisDataStore.edit { it[Keys.DELETION_GUARD_MODE] = mode.name }
     }
 
     suspend fun updateScanFilter(config: ScanFilterConfig) {

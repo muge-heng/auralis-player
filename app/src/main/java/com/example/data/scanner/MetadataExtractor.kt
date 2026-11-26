@@ -191,6 +191,184 @@ class MetadataExtractor(private val context: Context) {
             if (hasArt && (hasTitleTag || isLossless)) return false
             return true
         }
+
+        fun extractEmbeddedLyricsFromBytes(bytes: ByteArray): String? {
+            if (bytes.size < 16) return null
+
+            // 1. Check ID3v2 USLT frame (MP3 / AIFF)
+            if (bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) {
+                parseId3v2Uslt(bytes)?.let { return it }
+            }
+
+            // 2. Check FLAC Vorbis Comment LYRICS / UNSYNCEDLYRICS
+            if (bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
+                bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte()
+            ) {
+                parseFlacLyrics(bytes)?.let { return it }
+            }
+
+            // 3. Check MP4 / M4A ©lyr atom
+            parseMp4Lyr(bytes)?.let { return it }
+
+            return null
+        }
+
+        private fun parseId3v2Uslt(data: ByteArray): String? {
+            val versionMajor = data[3].toInt() and 0xFF
+            val tagSize = syncSafeInt(data, 6)
+            val limit = min(data.size, 10 + tagSize)
+            var offset = 10
+
+            // Skip extended header if present
+            val flags = data[5].toInt() and 0xFF
+            if ((flags and 0x40) != 0 && offset + 4 <= limit) {
+                val extSize = if (versionMajor == 4) syncSafeInt(data, offset) else bigEndianInt(data, offset)
+                offset += extSize + 4
+            }
+
+            while (offset + 10 < limit) {
+                val frameId = String(data, offset, 4, Charsets.ISO_8859_1)
+                if (frameId[0] == '\u0000') break
+                val frameSize = if (versionMajor == 4) {
+                    syncSafeInt(data, offset + 4)
+                } else {
+                    bigEndianInt(data, offset + 4)
+                }
+                if (frameSize <= 0 || offset + 10 + frameSize > limit) break
+
+                if (frameId == "USLT") {
+                    val payloadStart = offset + 10
+                    val encoding = data[payloadStart].toInt() and 0xFF
+                    // Skip 1 byte encoding + 3 bytes language code
+                    var cursor = payloadStart + 4
+                    val payloadEnd = payloadStart + frameSize
+                    if (cursor < payloadEnd) {
+                        val textBytes = when (encoding) {
+                            1, 2 -> {
+                                // UTF-16 null-terminated description (2 zero bytes)
+                                var descEnd = cursor
+                                while (descEnd + 1 < payloadEnd) {
+                                    if (data[descEnd] == 0.toByte() && data[descEnd + 1] == 0.toByte()) {
+                                        descEnd += 2
+                                        break
+                                    }
+                                    descEnd += 2
+                                }
+                                cursor = descEnd
+                                data.copyOfRange(cursor.coerceAtMost(payloadEnd), payloadEnd)
+                            }
+                            else -> {
+                                while (cursor < payloadEnd && data[cursor] != 0.toByte()) cursor++
+                                if (cursor < payloadEnd) cursor++ // skip null
+                                data.copyOfRange(cursor.coerceAtMost(payloadEnd), payloadEnd)
+                            }
+                        }
+                        val charset: Charset = when (encoding) {
+                            1 -> Charsets.UTF_16
+                            2 -> Charsets.UTF_16BE
+                            3 -> Charsets.UTF_8
+                            else -> Charsets.ISO_8859_1
+                        }
+                        val decoded = String(textBytes, charset).trim().trimEnd('\u0000')
+                        if (decoded.isNotBlank()) return decoded
+                    }
+                }
+                offset += 10 + frameSize
+            }
+            return null
+        }
+
+        private fun parseFlacLyrics(data: ByteArray): String? {
+            var offset = 4
+            while (offset + 4 <= data.size) {
+                val header = data[offset].toInt() and 0xFF
+                val isLast = (header and 0x80) != 0
+                val blockType = header and 0x7F
+                val length = ((data[offset + 1].toInt() and 0xFF) shl 16) or
+                    ((data[offset + 2].toInt() and 0xFF) shl 8) or
+                    (data[offset + 3].toInt() and 0xFF)
+                offset += 4
+                if (offset + length > data.size) break
+
+                if (blockType == 4) { // VORBIS_COMMENT
+                    var cursor = offset
+                    if (cursor + 4 > offset + length) break
+                    val vendorLen = littleEndianInt(data, cursor)
+                    cursor += 4 + vendorLen
+                    if (cursor + 4 > offset + length) break
+                    val commentCount = littleEndianInt(data, cursor)
+                    cursor += 4
+                    for (i in 0 until commentCount) {
+                        if (cursor + 4 > offset + length) break
+                        val commentLen = littleEndianInt(data, cursor)
+                        cursor += 4
+                        if (commentLen < 0 || cursor + commentLen > offset + length) break
+                        val comment = String(data, cursor, commentLen, Charsets.UTF_8)
+                        cursor += commentLen
+                        val eqIdx = comment.indexOf('=')
+                        if (eqIdx > 0) {
+                            val key = comment.substring(0, eqIdx).uppercase()
+                            if (key == "LYRICS" || key == "UNSYNCEDLYRICS" || key == "SYLT") {
+                                val value = comment.substring(eqIdx + 1).trim()
+                                if (value.isNotBlank()) return value
+                            }
+                        }
+                    }
+                }
+                offset += length
+                if (isLast) break
+            }
+            return null
+        }
+
+        private fun parseMp4Lyr(data: ByteArray): String? {
+            // Search for ©lyr (0xA9, 'l', 'y', 'r') followed by 'data' sub-atom
+            for (i in 0 until data.size - 24) {
+                if (data[i] == 0xA9.toByte() &&
+                    data[i + 1] == 'l'.code.toByte() &&
+                    data[i + 2] == 'y'.code.toByte() &&
+                    data[i + 3] == 'r'.code.toByte()
+                ) {
+                    val dataAtomStart = i + 4
+                    if (dataAtomStart + 16 < data.size &&
+                        data[dataAtomStart + 4] == 'd'.code.toByte() &&
+                        data[dataAtomStart + 5] == 'a'.code.toByte() &&
+                        data[dataAtomStart + 6] == 't'.code.toByte() &&
+                        data[dataAtomStart + 7] == 'a'.code.toByte()
+                    ) {
+                        val atomSize = bigEndianInt(data, dataAtomStart)
+                        val textStart = dataAtomStart + 16
+                        val textEnd = min(data.size, dataAtomStart + atomSize)
+                        if (textEnd > textStart) {
+                            val text = String(data, textStart, textEnd - textStart, Charsets.UTF_8).trim()
+                            if (text.isNotBlank()) return text
+                        }
+                    }
+                }
+            }
+            return null
+        }
+
+        private fun syncSafeInt(b: ByteArray, offset: Int): Int {
+            return ((b[offset].toInt() and 0x7F) shl 21) or
+                ((b[offset + 1].toInt() and 0x7F) shl 14) or
+                ((b[offset + 2].toInt() and 0x7F) shl 7) or
+                (b[offset + 3].toInt() and 0x7F)
+        }
+
+        private fun bigEndianInt(b: ByteArray, offset: Int): Int {
+            return ((b[offset].toInt() and 0xFF) shl 24) or
+                ((b[offset + 1].toInt() and 0xFF) shl 16) or
+                ((b[offset + 2].toInt() and 0xFF) shl 8) or
+                (b[offset + 3].toInt() and 0xFF)
+        }
+
+        private fun littleEndianInt(b: ByteArray, offset: Int): Int {
+            return (b[offset].toInt() and 0xFF) or
+                ((b[offset + 1].toInt() and 0xFF) shl 8) or
+                ((b[offset + 2].toInt() and 0xFF) shl 16) or
+                ((b[offset + 3].toInt() and 0xFF) shl 24)
+        }
     }
 
     private fun persistArtwork(key: String, bytes: ByteArray): String? {
@@ -265,181 +443,7 @@ class MetadataExtractor(private val context: Context) {
             buffer.copyOf(totalRead)
         } ?: return null
 
-        if (bytes.size < 16) return null
-
-        // 1. Check ID3v2 USLT frame (MP3 / AIFF)
-        if (bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) {
-            parseId3v2Uslt(bytes)?.let { return it }
-        }
-
-        // 2. Check FLAC Vorbis Comment LYRICS / UNSYNCEDLYRICS
-        if (bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
-            bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte()
-        ) {
-            parseFlacLyrics(bytes)?.let { return it }
-        }
-
-        // 3. Check MP4 / M4A ©lyr atom
-        parseMp4Lyr(bytes)?.let { return it }
-
-        return null
-    }
-
-    private fun parseId3v2Uslt(data: ByteArray): String? {
-        val versionMajor = data[3].toInt() and 0xFF
-        val tagSize = syncSafeInt(data, 6)
-        val limit = min(data.size, 10 + tagSize)
-        var offset = 10
-
-        // Skip extended header if present
-        val flags = data[5].toInt() and 0xFF
-        if ((flags and 0x40) != 0 && offset + 4 <= limit) {
-            val extSize = if (versionMajor == 4) syncSafeInt(data, offset) else bigEndianInt(data, offset)
-            offset += extSize + 4
-        }
-
-        while (offset + 10 < limit) {
-            val frameId = String(data, offset, 4, Charsets.ISO_8859_1)
-            if (frameId[0] == '\u0000') break
-            val frameSize = if (versionMajor == 4) {
-                syncSafeInt(data, offset + 4)
-            } else {
-                bigEndianInt(data, offset + 4)
-            }
-            if (frameSize <= 0 || offset + 10 + frameSize > limit) break
-
-            if (frameId == "USLT") {
-                val payloadStart = offset + 10
-                val encoding = data[payloadStart].toInt() and 0xFF
-                // Skip 1 byte encoding + 3 bytes language code
-                var cursor = payloadStart + 4
-                val payloadEnd = payloadStart + frameSize
-                if (cursor < payloadEnd) {
-                    val textBytes = when (encoding) {
-                        1, 2 -> {
-                            // UTF-16 null-terminated description (2 zero bytes)
-                            var descEnd = cursor
-                            while (descEnd + 1 < payloadEnd) {
-                                if (data[descEnd] == 0.toByte() && data[descEnd + 1] == 0.toByte()) {
-                                    descEnd += 2
-                                    break
-                                }
-                                descEnd += 2
-                            }
-                            cursor = descEnd
-                            data.copyOfRange(cursor.coerceAtMost(payloadEnd), payloadEnd)
-                        }
-                        else -> {
-                            while (cursor < payloadEnd && data[cursor] != 0.toByte()) cursor++
-                            if (cursor < payloadEnd) cursor++ // skip null
-                            data.copyOfRange(cursor.coerceAtMost(payloadEnd), payloadEnd)
-                        }
-                    }
-                    val charset: Charset = when (encoding) {
-                        1 -> Charsets.UTF_16
-                        2 -> Charsets.UTF_16BE
-                        3 -> Charsets.UTF_8
-                        else -> Charsets.ISO_8859_1
-                    }
-                    val decoded = String(textBytes, charset).trim().trimEnd('\u0000')
-                    if (decoded.isNotBlank()) return decoded
-                }
-            }
-            offset += 10 + frameSize
-        }
-        return null
-    }
-
-    private fun parseFlacLyrics(data: ByteArray): String? {
-        var offset = 4
-        while (offset + 4 <= data.size) {
-            val header = data[offset].toInt() and 0xFF
-            val isLast = (header and 0x80) != 0
-            val blockType = header and 0x7F
-            val length = ((data[offset + 1].toInt() and 0xFF) shl 16) or
-                ((data[offset + 2].toInt() and 0xFF) shl 8) or
-                (data[offset + 3].toInt() and 0xFF)
-            offset += 4
-            if (offset + length > data.size) break
-
-            if (blockType == 4) { // VORBIS_COMMENT
-                var cursor = offset
-                if (cursor + 4 > offset + length) break
-                val vendorLen = littleEndianInt(data, cursor)
-                cursor += 4 + vendorLen
-                if (cursor + 4 > offset + length) break
-                val commentCount = littleEndianInt(data, cursor)
-                cursor += 4
-                for (i in 0 until commentCount) {
-                    if (cursor + 4 > offset + length) break
-                    val commentLen = littleEndianInt(data, cursor)
-                    cursor += 4
-                    if (commentLen < 0 || cursor + commentLen > offset + length) break
-                    val comment = String(data, cursor, commentLen, Charsets.UTF_8)
-                    cursor += commentLen
-                    val eqIdx = comment.indexOf('=')
-                    if (eqIdx > 0) {
-                        val key = comment.substring(0, eqIdx).uppercase()
-                        if (key == "LYRICS" || key == "UNSYNCEDLYRICS" || key == "SYLT") {
-                            val value = comment.substring(eqIdx + 1).trim()
-                            if (value.isNotBlank()) return value
-                        }
-                    }
-                }
-            }
-            offset += length
-            if (isLast) break
-        }
-        return null
-    }
-
-    private fun parseMp4Lyr(data: ByteArray): String? {
-        // Search for ©lyr (0xA9, 'l', 'y', 'r') followed by 'data' sub-atom
-        for (i in 0 until data.size - 24) {
-            if (data[i] == 0xA9.toByte() &&
-                data[i + 1] == 'l'.code.toByte() &&
-                data[i + 2] == 'y'.code.toByte() &&
-                data[i + 3] == 'r'.code.toByte()
-            ) {
-                val dataAtomStart = i + 4
-                if (dataAtomStart + 16 < data.size &&
-                    data[dataAtomStart + 4] == 'd'.code.toByte() &&
-                    data[dataAtomStart + 5] == 'a'.code.toByte() &&
-                    data[dataAtomStart + 6] == 't'.code.toByte() &&
-                    data[dataAtomStart + 7] == 'a'.code.toByte()
-                ) {
-                    val atomSize = bigEndianInt(data, dataAtomStart)
-                    val textStart = dataAtomStart + 16
-                    val textEnd = min(data.size, dataAtomStart + atomSize)
-                    if (textEnd > textStart) {
-                        val text = String(data, textStart, textEnd - textStart, Charsets.UTF_8).trim()
-                        if (text.isNotBlank()) return text
-                    }
-                }
-            }
-        }
-        return null
-    }
-
-    private fun syncSafeInt(b: ByteArray, offset: Int): Int {
-        return ((b[offset].toInt() and 0x7F) shl 21) or
-            ((b[offset + 1].toInt() and 0x7F) shl 14) or
-            ((b[offset + 2].toInt() and 0x7F) shl 7) or
-            (b[offset + 3].toInt() and 0x7F)
-    }
-
-    private fun bigEndianInt(b: ByteArray, offset: Int): Int {
-        return ((b[offset].toInt() and 0xFF) shl 24) or
-            ((b[offset + 1].toInt() and 0xFF) shl 16) or
-            ((b[offset + 2].toInt() and 0xFF) shl 8) or
-            (b[offset + 3].toInt() and 0xFF)
-    }
-
-    private fun littleEndianInt(b: ByteArray, offset: Int): Int {
-        return (b[offset].toInt() and 0xFF) or
-            ((b[offset + 1].toInt() and 0xFF) shl 8) or
-            ((b[offset + 2].toInt() and 0xFF) shl 16) or
-            ((b[offset + 3].toInt() and 0xFF) shl 24)
+        return extractEmbeddedLyricsFromBytes(bytes)
     }
 
     private fun sha256(input: String): String {

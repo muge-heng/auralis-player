@@ -136,7 +136,7 @@ fun PlaylistsScreen(
     onCreatePlaylist: (String, String) -> Unit,
     onCreatePlaylistWithTracks: (String, String, List<String>) -> Unit,
     onRenamePlaylist: (Long, String, String) -> Unit,
-    onDeletePlaylist: (Long) -> Unit,
+    onDeletePlaylist: (Long, (() -> Unit)?) -> Unit,
     onClearPlaylist: (Long) -> Unit,
     onUpdatePlaylistCoverConfig: (String, PlaylistCoverConfig?) -> Unit = { _, _ -> },
     onPlayTrack: (Track, List<Track>) -> Unit,
@@ -145,6 +145,7 @@ fun PlaylistsScreen(
     onAppendToQueue: (List<Track>) -> Unit,
     onToggleFavorite: (Track) -> Unit,
     onBatchFavorite: (List<String>, Boolean) -> Unit,
+    onClearAllFavorites: (List<String>) -> Unit = {},
     onAddToPlaylist: (Long, Track) -> Unit,
     onBatchAddToPlaylist: (Long, List<String>) -> Unit,
     onRemoveFromPlaylist: (Long, List<String>) -> Unit,
@@ -152,6 +153,8 @@ fun PlaylistsScreen(
     onClearRecentHistory: () -> Unit,
     onRemoveFromRecent: (List<String>) -> Unit,
     onClearMostPlayed: () -> Unit,
+    onBurnLyricsToAudio: (Track) -> Unit = {},
+    onExportTrackLyrics: (Track) -> Unit = {},
     contentBottomPadding: Int
 ) {
     val artistCollections = remember(allTracks) { buildArtistAutoPlaylists(allTracks) }
@@ -171,7 +174,6 @@ fun PlaylistsScreen(
     var renameDesc by remember { mutableStateOf("") }
     var saveSmartAsPlaylistDefaults by remember { mutableStateOf<Pair<String, List<String>>?>(null) }
     var saveSmartName by remember { mutableStateOf("") }
-    var pendingConfirmAction by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
     var coverEditorTarget by remember { mutableStateOf<PlaylistCoverEditorTarget?>(null) }
 
     when (val activeKey = selectedKey) {
@@ -209,14 +211,10 @@ fun PlaylistsScreen(
                     )
                 },
                 onRequestClearPlaylist = { item ->
-                    pendingConfirmAction = "确定清空「${item.playlist.name}」内的全部曲目吗？" to {
-                        onClearPlaylist(item.playlist.id)
-                    }
+                    onClearPlaylist(item.playlist.id)
                 },
                 onRequestDeletePlaylist = { item ->
-                    pendingConfirmAction = "确定永久删除歌单「${item.playlist.name}」吗？（本地歌曲文件不会被删除）" to {
-                        onDeletePlaylist(item.playlist.id)
-                    }
+                    onDeletePlaylist(item.playlist.id, null)
                 }
             )
         }
@@ -488,9 +486,7 @@ fun PlaylistsScreen(
                                                                 text = { Text("一键清空歌单", color = RubyAccent) },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
-                                                                    pendingConfirmAction = "确定清空「$collectionTitle」内的全部曲目吗？" to {
-                                                                        onClearPlaylist(activeKey.playlistId)
-                                                                    }
+                                                                    onClearPlaylist(activeKey.playlistId)
                                                                 }
                                                             )
                                                         }
@@ -498,8 +494,7 @@ fun PlaylistsScreen(
                                                             text = { Text("删除此歌单", color = RubyAccent) },
                                                             onClick = {
                                                                 detailMenuExpanded = false
-                                                                pendingConfirmAction = "确定永久删除歌单「$collectionTitle」吗？（本地歌曲文件不会被删除）" to {
-                                                                    onDeletePlaylist(activeKey.playlistId)
+                                                                onDeletePlaylist(activeKey.playlistId) {
                                                                     selectedKey = null
                                                                 }
                                                             }
@@ -511,9 +506,7 @@ fun PlaylistsScreen(
                                                                 text = { Text("取消全部红心", color = RubyAccent) },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
-                                                                    pendingConfirmAction = "确定取消全部 ${collectionTracks.size} 首曲目的红心收藏吗？" to {
-                                                                        onBatchFavorite(collectionTracks.map { it.id }, false)
-                                                                    }
+                                                                    onClearAllFavorites(collectionTracks.map { it.id })
                                                                 }
                                                             )
                                                         }
@@ -524,9 +517,7 @@ fun PlaylistsScreen(
                                                                 text = { Text("清空最近聆听记录", color = RubyAccent) },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
-                                                                    pendingConfirmAction = "确定清空所有最近聆听历史记录吗？" to {
-                                                                        onClearRecentHistory()
-                                                                    }
+                                                                    onClearRecentHistory()
                                                                 }
                                                             )
                                                         }
@@ -537,9 +528,7 @@ fun PlaylistsScreen(
                                                                 text = { Text("重置循环播放统计", color = RubyAccent) },
                                                                 onClick = {
                                                                     detailMenuExpanded = false
-                                                                    pendingConfirmAction = "确定重置所有曲目的高频播放次数统计吗？" to {
-                                                                        onClearMostPlayed()
-                                                                    }
+                                                                    onClearMostPlayed()
                                                                 }
                                                             )
                                                         }
@@ -914,6 +903,8 @@ fun PlaylistsScreen(
                                     onToggleFavorite = { onToggleFavorite(track) },
                                     onAddToPlaylist = { plId -> onAddToPlaylist(plId, track) },
                                     onOpenPlaylistPicker = { pendingPlaylistTargetIds = listOf(track.id) },
+                                    onBurnLyricsToAudio = { onBurnLyricsToAudio(track) },
+                                    onExportTrackLyrics = { onExportTrackLyrics(track) },
                                     customExtraMenuItems = { dismiss ->
                                         when (activeKey) {
                                             is ActiveCollectionKey.Custom -> {
@@ -1252,31 +1243,6 @@ fun PlaylistsScreen(
                 selectedIds = emptySet()
             },
             onDismiss = { pendingPlaylistTargetIds = null }
-        )
-    }
-
-    pendingConfirmAction?.let { (message, action) ->
-        AlertDialog(
-            onDismissRequest = { pendingConfirmAction = null },
-            title = { Text("确认操作") },
-            text = { Text(message) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        action()
-                        pendingConfirmAction = null
-                        isSelectionMode = false
-                        selectedIds = emptySet()
-                    }
-                ) {
-                    Text("确认")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingConfirmAction = null }) {
-                    Text("取消")
-                }
-            }
         )
     }
 

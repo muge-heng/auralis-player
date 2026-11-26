@@ -504,12 +504,243 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun appVersionInfoTracksSemanticVersionFromBaseline090To091() {
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 2)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+    fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 3)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
+        assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
+    }
+
+    @Test
+    fun deletionGuardModeParsesStoredValuesWithSafeDefault() {
+        assertEquals(
+            com.example.model.DeletionGuardMode.CONFIRM_DIALOG,
+            com.example.model.DeletionGuardMode.fromStored(null)
+        )
+        assertEquals(
+            com.example.model.DeletionGuardMode.CONFIRM_DIALOG,
+            com.example.model.DeletionGuardMode.fromStored("UNKNOWN")
+        )
+        assertEquals(
+            com.example.model.DeletionGuardMode.TOP_UNDO_BANNER,
+            com.example.model.DeletionGuardMode.fromStored("TOP_UNDO_BANNER")
+        )
+    }
+
+    @Test
+    fun audioLyricsTagWriterRoundTripsMp3Id3v23AndBareMp3() {
+        val sampleLyrics = "[00:01.20]星光洒落在黑胶唱片之上\n[00:05.80]Auralis Lossless Stage"
+        val audioPayload = byteArrayOf(0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x64.toByte(), 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+
+        // 1. Bare MP3 (no ID3 header) -> prepends ID3v2.4 USLT & preserves exact audio payload
+        val bareResult = com.example.data.lyrics.AudioLyricsTagWriter.embedLyrics(
+            originalBytes = audioPayload,
+            lyricsText = sampleLyrics,
+            fileName = "song.mp3",
+            mimeType = "audio/mpeg"
+        ).getOrThrow()
+        assertEquals("MP3", bareResult.formatLabel)
+        assertEquals(sampleLyrics, MetadataExtractor.extractEmbeddedLyricsFromBytes(bareResult.patchedBytes))
+        assertTrue(
+            bareResult.patchedBytes.copyOfRange(
+                bareResult.patchedBytes.size - audioPayload.size,
+                bareResult.patchedBytes.size
+            ).contentEquals(audioPayload)
+        )
+
+        // 2. ID3v2.3 MP3 with existing TIT2 frame -> preserves TIT2 + audio payload & updates USLT
+        val tit2Payload = byteArrayOf(3) + "Lumen".toByteArray(Charsets.UTF_8)
+        val tit2Frame = "TIT2".toByteArray(Charsets.ISO_8859_1) +
+            byteArrayOf(0, 0, 0, tit2Payload.size.toByte(), 0, 0) +
+            tit2Payload
+        val tagSize = tit2Frame.size
+        val id3v23Header = byteArrayOf(
+            'I'.code.toByte(), 'D'.code.toByte(), '3'.code.toByte(),
+            3, 0, 0,
+            ((tagSize ushr 21) and 0x7F).toByte(),
+            ((tagSize ushr 14) and 0x7F).toByte(),
+            ((tagSize ushr 7) and 0x7F).toByte(),
+            (tagSize and 0x7F).toByte()
+        )
+        val mp3WithId3v23 = id3v23Header + tit2Frame + audioPayload
+        val patched23 = com.example.data.lyrics.AudioLyricsTagWriter.embedLyrics(
+            originalBytes = mp3WithId3v23,
+            lyricsText = sampleLyrics,
+            fileName = "lumen.mp3",
+            mimeType = "audio/mpeg"
+        ).getOrThrow()
+        assertEquals(sampleLyrics, MetadataExtractor.extractEmbeddedLyricsFromBytes(patched23.patchedBytes))
+        assertTrue(String(patched23.patchedBytes, Charsets.ISO_8859_1).contains("TIT2"))
+        assertTrue(
+            patched23.patchedBytes.copyOfRange(
+                patched23.patchedBytes.size - audioPayload.size,
+                patched23.patchedBytes.size
+            ).contentEquals(audioPayload)
+        )
+    }
+
+    @Test
+    fun audioLyricsTagWriterRoundTripsFlacVorbisCommentPreservingBlocksAndAudio() {
+        val sampleLyrics = "[00:00.50]无损母带 FLAC 内嵌歌词测试\n[00:04.00]Second Line"
+        val streamInfoPayload = ByteArray(34) { (it + 1).toByte() }
+        val streamInfoBlock = byteArrayOf(0x00, 0x00, 0x00, 34) + streamInfoPayload
+
+        // Existing VORBIS_COMMENT block (type 4) with TITLE & old LYRICS
+        val vendorBytes = "reference libFLAC".toByteArray(Charsets.UTF_8)
+        val titleField = "TITLE=流明".toByteArray(Charsets.UTF_8)
+        val oldLyricsField = "LYRICS=Old Lyric".toByteArray(Charsets.UTF_8)
+        fun le32(v: Int) = byteArrayOf(
+            (v and 0xFF).toByte(),
+            ((v ushr 8) and 0xFF).toByte(),
+            ((v ushr 16) and 0xFF).toByte(),
+            ((v ushr 24) and 0xFF).toByte()
+        )
+        val vcPayload = le32(vendorBytes.size) + vendorBytes +
+            le32(2) +
+            le32(titleField.size) + titleField +
+            le32(oldLyricsField.size) + oldLyricsField
+        val vcBlock = byteArrayOf(
+            0x04,
+            ((vcPayload.size ushr 16) and 0xFF).toByte(),
+            ((vcPayload.size ushr 8) and 0xFF).toByte(),
+            (vcPayload.size and 0xFF).toByte()
+        ) + vcPayload
+
+        // Last metadata block: PICTURE (type 6, isLast = 0x80 -> 0x86)
+        val picPayload = byteArrayOf(11, 22, 33, 44, 55, 66)
+        val picBlock = byteArrayOf(0x86.toByte(), 0x00, 0x00, picPayload.size.toByte()) + picPayload
+        val flacFrames = byteArrayOf(0xFF.toByte(), 0xF8.toByte(), 0x55, 0x66, 0x77, 0x88.toByte())
+
+        val originalFlac = "fLaC".toByteArray(Charsets.ISO_8859_1) + streamInfoBlock + vcBlock + picBlock + flacFrames
+        val outcome = com.example.data.lyrics.AudioLyricsTagWriter.embedLyrics(
+            originalBytes = originalFlac,
+            lyricsText = sampleLyrics,
+            fileName = "lumen.flac",
+            mimeType = "audio/flac"
+        ).getOrThrow()
+
+        assertEquals("FLAC", outcome.formatLabel)
+        assertEquals(sampleLyrics, MetadataExtractor.extractEmbeddedLyricsFromBytes(outcome.patchedBytes))
+        assertTrue(String(outcome.patchedBytes, Charsets.UTF_8).contains("TITLE=流明"))
+        assertFalse(String(outcome.patchedBytes, Charsets.UTF_8).contains("Old Lyric"))
+        assertTrue(
+            outcome.patchedBytes.copyOfRange(
+                outcome.patchedBytes.size - flacFrames.size,
+                outcome.patchedBytes.size
+            ).contentEquals(flacFrames)
+        )
+    }
+
+    @Test
+    fun audioLyricsTagWriterRoundTripsMp4AndShiftsStcoOffsetsAccurately() {
+        fun be32(v: Int) = byteArrayOf(
+            ((v ushr 24) and 0xFF).toByte(),
+            ((v ushr 16) and 0xFF).toByte(),
+            ((v ushr 8) and 0xFF).toByte(),
+            (v and 0xFF).toByte()
+        )
+        fun box(type: String, payload: ByteArray): ByteArray =
+            be32(8 + payload.size) + type.toByteArray(Charsets.ISO_8859_1) + payload
+
+        val ftyp = box("ftyp", "M4A ".toByteArray(Charsets.ISO_8859_1) + ByteArray(8))
+        val mdatPayload = byteArrayOf(0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80.toByte())
+        val mdat = box("mdat", mdatPayload)
+
+        // Build moov with trak -> mdia -> minf -> stbl -> stco pointing to mdatPayload start
+        // First compute moov size with a placeholder offset, then set exact offset
+        fun buildMoov(chunkOffset: Int): ByteArray {
+            val stco = box("stco", be32(0) + be32(1) + be32(chunkOffset))
+            val stbl = box("stbl", stco)
+            val minf = box("minf", stbl)
+            val mdia = box("mdia", minf)
+            val trak = box("trak", mdia)
+            return box("moov", trak)
+        }
+
+        val initialMoovSize = buildMoov(0).size
+        val initialChunkOffset = ftyp.size + initialMoovSize + 8 // start of mdatPayload
+        val originalMp4 = ftyp + buildMoov(initialChunkOffset) + mdat
+
+        val sampleLyrics = "[00:02.00]MP4 精准偏移量重算测试"
+        val outcome = com.example.data.lyrics.AudioLyricsTagWriter.embedLyrics(
+            originalBytes = originalMp4,
+            lyricsText = sampleLyrics,
+            fileName = "track.m4a",
+            mimeType = "audio/mp4"
+        ).getOrThrow()
+
+        assertEquals("MP4/M4A", outcome.formatLabel)
+        assertEquals(sampleLyrics, MetadataExtractor.extractEmbeddedLyricsFromBytes(outcome.patchedBytes))
+
+        val delta = outcome.patchedBytes.size - originalMp4.size
+        assertTrue(delta > 0)
+
+        // Locate 'stco' box in patched output and verify the chunk offset increased by exact delta
+        val patched = outcome.patchedBytes
+        var stcoOffsetValue = -1
+        for (i in 0 until patched.size - 16) {
+            if (patched[i] == 's'.code.toByte() &&
+                patched[i + 1] == 't'.code.toByte() &&
+                patched[i + 2] == 'c'.code.toByte() &&
+                patched[i + 3] == 'o'.code.toByte()
+            ) {
+                val valPos = i + 12 // 4 type + 4 version/flags + 4 entryCount
+                stcoOffsetValue = ((patched[valPos].toInt() and 0xFF) shl 24) or
+                    ((patched[valPos + 1].toInt() and 0xFF) shl 16) or
+                    ((patched[valPos + 2].toInt() and 0xFF) shl 8) or
+                    (patched[valPos + 3].toInt() and 0xFF)
+                break
+            }
+        }
+        assertEquals(initialChunkOffset + delta, stcoOffsetValue)
+        // Verify that reading at the updated stco offset lands directly on mdatPayload!
+        assertTrue(
+            patched.copyOfRange(stcoOffsetValue, stcoOffsetValue + mdatPayload.size)
+                .contentEquals(mdatPayload)
+        )
+    }
+
+    @Test
+    fun audioLyricsTagWriterSuggestsSanitizedExportFileNames() {
+        val track = Track(
+            id = "t1",
+            contentUri = "content://media/1",
+            title = "流明: Part/1",
+            artist = "星瞳",
+            album = "星·征途",
+            durationMs = 200_000L,
+            sizeBytes = 10_000_000L,
+            folderPath = "Music",
+            fileName = "lumen.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC"
+        )
+        val (lrcName, _) = com.example.data.lyrics.AudioLyricsTagWriter.suggestExportFileNameAndMime(
+            track = track,
+            formatName = "LRC",
+            rawContent = "[00:01.00]Hello"
+        )
+        assertEquals("流明_ Part_1 - 星瞳.lrc", lrcName)
+
+        val (qrcName, _) = com.example.data.lyrics.AudioLyricsTagWriter.suggestExportFileNameAndMime(
+            track = track,
+            formatName = "QRC",
+            rawContent = "[0,1000]Hello(0,500)"
+        )
+        assertTrue(qrcName.endsWith(".qrc"))
+
+        val (txtName, txtMime) = com.example.data.lyrics.AudioLyricsTagWriter.suggestExportFileNameAndMime(
+            track = track.copy(artist = "未知艺术家"),
+            formatName = "PLAIN",
+            rawContent = "纯文本歌词"
+        )
+        assertEquals("流明_ Part_1.txt", txtName)
+        assertEquals("text/plain", txtMime)
     }
 }
 

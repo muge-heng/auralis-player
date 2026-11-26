@@ -132,6 +132,8 @@ import com.example.model.parseTokenCountInput
 import com.example.ui.components.AiCatalogPickerSheet
 import com.example.ui.components.MarkdownText
 import com.example.ui.components.ReasoningEffortSliderCard
+import com.example.ui.components.TopUndoBanner
+import com.example.ui.components.UndoBannerState
 import com.example.ui.components.bouncyClickable
 import com.example.ui.components.reasoningAccentColor
 import com.example.ui.theme.AuraViolet
@@ -188,6 +190,8 @@ fun AiChatScreen(
     onRenameSession: (Long, String) -> Unit,
     onRegenerateSessionTitle: (Long) -> Unit,
     onDeleteSession: (Long) -> Unit,
+    undoBanner: UndoBannerState? = null,
+    onDismissUndoBanner: () -> Unit = {},
     onSendMessage: (text: String, attachTrack: Boolean, attachVision: Boolean, attachLibraryCatalog: Boolean) -> Unit,
     onRunQuickTask: (AiTaskType, attachVision: Boolean, attachLibraryCatalog: Boolean) -> Unit,
     onStopGeneration: (Long) -> Unit,
@@ -1017,6 +1021,11 @@ fun AiChatScreen(
                     .padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                TopUndoBanner(
+                    state = undoBanner,
+                    onDismiss = onDismissUndoBanner,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Column {
                     Text("独立对话窗口管理", style = MaterialTheme.typography.titleLarge)
                     Text(

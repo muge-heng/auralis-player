@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -12,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +44,9 @@ import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -53,6 +58,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +71,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -85,6 +92,7 @@ import com.example.ui.components.LiquidGlassNavItem
 import com.example.ui.components.MiniPlayerBar
 import com.example.ui.components.MorphingFloatingArtwork
 import com.example.ui.components.SmartScanConfirmDialog
+import com.example.ui.components.TopUndoBanner
 import com.example.ui.screens.AiChatScreen
 import com.example.ui.screens.DuplicateManagerSheet
 import com.example.ui.screens.EqualizerSheet
@@ -210,9 +218,16 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
     val showLibraryHero by viewModel.showLibraryHero.collectAsStateWithLifecycle()
     val enableGeneralAudioMode by viewModel.enableGeneralAudioMode.collectAsStateWithLifecycle()
+    val deletionGuardMode by viewModel.deletionGuardMode.collectAsStateWithLifecycle()
     val hapticProfile by viewModel.hapticProfile.collectAsStateWithLifecycle()
     val scanFilter by viewModel.scanFilter.collectAsStateWithLifecycle()
     val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
+    val undoBanner by viewModel.undoBanner.collectAsStateWithLifecycle()
+    val pendingConfirmDeletion by viewModel.pendingConfirmDeletion.collectAsStateWithLifecycle()
+    val pendingLyricExport by viewModel.pendingLyricExport.collectAsStateWithLifecycle()
+    val pendingBurnConfirm by viewModel.pendingBurnConfirm.collectAsStateWithLifecycle()
+    val pendingAudioWritePermission by viewModel.pendingAudioWritePermission.collectAsStateWithLifecycle()
+    val pendingAudioSaveCopy by viewModel.pendingAudioSaveCopy.collectAsStateWithLifecycle()
     val openNowPlayingTrigger by viewModel.openNowPlayingTrigger.collectAsStateWithLifecycle()
     val duplicateGroups by viewModel.duplicateGroups.collectAsStateWithLifecycle()
     val pendingImportConflicts by viewModel.pendingImportConflicts.collectAsStateWithLifecycle()
@@ -334,6 +349,51 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         val activeTrack = playbackState.currentTrack
         if (uri != null && activeTrack != null) {
             viewModel.importLyricFileForTrack(activeTrack, uri)
+        }
+    }
+
+    // SAF Lyric File Exporter
+    val lyricExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { uri ->
+        viewModel.completeExportTrackLyrics(uri)
+    }
+
+    // System MediaStore Write-Consent Launcher (Android 10+ Scoped Storage)
+    val audioWritePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.completeAuthorizedAudioWrite(result.resultCode == Activity.RESULT_OK)
+    }
+
+    // SAF Audio Save-Copy Fallback when original URI is strictly read-only
+    val audioSaveCopyLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/*")
+    ) { uri ->
+        viewModel.completeAudioSaveCopy(uri)
+    }
+
+    LaunchedEffect(pendingLyricExport) {
+        pendingLyricExport?.let { req ->
+            lyricExportLauncher.launch(req.suggestedFileName)
+        }
+    }
+
+    LaunchedEffect(pendingAudioWritePermission) {
+        pendingAudioWritePermission?.let { req ->
+            runCatching {
+                audioWritePermissionLauncher.launch(
+                    IntentSenderRequest.Builder(req.intentSender).build()
+                )
+            }.onFailure {
+                viewModel.completeAuthorizedAudioWrite(false)
+            }
+        }
+    }
+
+    LaunchedEffect(pendingAudioSaveCopy) {
+        pendingAudioSaveCopy?.let { req ->
+            audioSaveCopyLauncher.launch(req.suggestedFileName)
         }
     }
 
@@ -590,6 +650,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onBatchAddToPlaylist = viewModel::batchAddTracksToPlaylist,
                             onCreatePlaylistWithTracks = viewModel::createPlaylist,
                             onBatchRemoveFromLibrary = viewModel::batchRemoveTracksFromLibrary,
+                            onBurnLyricsToAudio = viewModel::requestBurnLyricsToAudio,
+                            onExportTrackLyrics = viewModel::requestExportTrackLyrics,
                             duplicateGroupCount = duplicateGroups.size,
                             duplicateRedundantCount = duplicateGroups.sumOf { it.redundantCount },
                             onOpenDuplicateManager = { showDuplicateManager = true },
@@ -610,7 +672,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onCreatePlaylist = { name, desc -> viewModel.createPlaylist(name, desc) },
                             onCreatePlaylistWithTracks = viewModel::createPlaylist,
                             onRenamePlaylist = viewModel::renamePlaylist,
-                            onDeletePlaylist = viewModel::deletePlaylist,
+                            onDeletePlaylist = { id, onDeleted -> viewModel.deletePlaylist(id, onDeleted) },
                             onClearPlaylist = viewModel::clearPlaylist,
                             onUpdatePlaylistCoverConfig = viewModel::updatePlaylistCoverConfig,
                             onPlayTrack = { track, queue -> viewModel.playTrack(track, queue) },
@@ -619,6 +681,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onAppendToQueue = viewModel::appendTracksToQueue,
                             onToggleFavorite = viewModel::toggleFavorite,
                             onBatchFavorite = viewModel::batchFavoriteTracks,
+                            onClearAllFavorites = viewModel::clearAllFavorites,
                             onAddToPlaylist = viewModel::addTrackToPlaylist,
                             onBatchAddToPlaylist = viewModel::batchAddTracksToPlaylist,
                             onRemoveFromPlaylist = viewModel::removeTracksFromPlaylist,
@@ -626,6 +689,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onClearRecentHistory = viewModel::clearRecentHistory,
                             onRemoveFromRecent = viewModel::removeFromRecentHistory,
                             onClearMostPlayed = viewModel::clearMostPlayedStats,
+                            onBurnLyricsToAudio = viewModel::requestBurnLyricsToAudio,
+                            onExportTrackLyrics = viewModel::requestExportTrackLyrics,
                             contentBottomPadding = if (useNavigationRail) miniPlayerExtraBottomDp else 16
                         )
 
@@ -645,6 +710,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                                 viewModel.regenerateSessionTitle(sessionId, showFeedbackToast = true)
                             },
                             onDeleteSession = viewModel::deleteAiSession,
+                            undoBanner = undoBanner,
+                            onDismissUndoBanner = viewModel::dismissUndoBanner,
                             onSendMessage = { text, attachTrack, attachVision, attachCatalog ->
                                 viewModel.sendAiMessage(
                                     userText = text,
@@ -690,6 +757,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             navBarStyle = navBarStyle,
                             showLibraryHero = showLibraryHero,
                             enableGeneralAudioMode = enableGeneralAudioMode,
+                            deletionGuardMode = deletionGuardMode,
                             hapticProfile = hapticProfile,
                             scanFilter = scanFilter,
                             lyricSettings = lyricSettings,
@@ -698,6 +766,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onSetNavBarStyle = viewModel::setNavBarStyle,
                             onSetShowLibraryHero = viewModel::setShowLibraryHero,
                             onSetEnableGeneralAudioMode = viewModel::setEnableGeneralAudioMode,
+                            onSetDeletionGuardMode = viewModel::setDeletionGuardMode,
                             onSetHapticProfile = viewModel::setHapticProfile,
                             onUpdateScanFilter = viewModel::updateScanFilter,
                             onUpdateLyricSettings = viewModel::updateLyricSettings,
@@ -934,6 +1003,77 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     executeSmartScanWithConfig(confirmedConfig)
                 },
                 onDismiss = { showSmartScanDialog = false }
+            )
+        }
+
+        // Global Top-Pinned Swipeable Undo Deletion Banner (floats above screens, Equalizer & NowPlaying)
+        TopUndoBanner(
+            state = undoBanner,
+            onDismiss = viewModel::dismissUndoBanner,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+        )
+
+        // Global Deletion Confirmation Dialog (when DeletionGuardMode == CONFIRM_DIALOG)
+        pendingConfirmDeletion?.let { req ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissPendingConfirmDeletion,
+                title = { Text(req.title) },
+                text = { Text(req.message) },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::confirmPendingDeletion,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = RubyAccent,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.testTag("global_confirm_delete_button")
+                    ) {
+                        Text(req.confirmLabel)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = viewModel::dismissPendingConfirmDeletion,
+                        modifier = Modifier.testTag("global_cancel_delete_button")
+                    ) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+
+        // Burn Lyrics Into Original Audio File Confirmation Dialog
+        pendingBurnConfirm?.let { req ->
+            AlertDialog(
+                onDismissRequest = viewModel::dismissBurnConfirm,
+                title = { Text("刻录歌词到原音频文件") },
+                text = {
+                    Text(
+                        "即将把当前获取到的歌词（来源：${req.sourceLabel}）无损写入「${req.track.title}」的音频元数据标签（MP3 ID3v2 USLT / FLAC Vorbis LYRICS / M4A ©lyr）。\n\n原始音频流、封面与其他元数据将保持完整不变；若系统限制直接覆写，将自动申请写入授权或引导另存为完整副本。"
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = viewModel::confirmBurnLyricsToAudio,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = RubyAccent,
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.testTag("confirm_burn_lyrics_button")
+                    ) {
+                        Text("确认刻录")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = viewModel::dismissBurnConfirm,
+                        modifier = Modifier.testTag("cancel_burn_lyrics_button")
+                    ) {
+                        Text("取消")
+                    }
+                }
             )
         }
     }

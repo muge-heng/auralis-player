@@ -1,7 +1,11 @@
 package com.example.viewmodel
 
 import android.app.Application
+import android.app.RecoverableSecurityException
+import android.content.IntentSender
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -11,6 +15,8 @@ import com.example.data.ai.AiTaskType
 import com.example.data.ai.DeepSeekChatClient
 import com.example.data.local.AuralisDatabase
 import com.example.data.local.PreferencesRepository
+import com.example.data.lyrics.AudioLyricsTagWriter
+import com.example.data.lyrics.AudioTagWriteOutcome
 import com.example.data.lyrics.LyricParser
 import com.example.data.lyrics.OnlineLyricClient
 import com.example.data.scanner.DuplicateTrackGroup
@@ -30,6 +36,7 @@ import com.example.model.AiSessionRuntimeState
 import com.example.model.AiSuggestedPlaylist
 import com.example.model.AuraPalette
 import com.example.model.CustomLyricEntity
+import com.example.model.DeletionGuardMode
 import com.example.model.EqPreset
 import com.example.model.EqState
 import com.example.model.HapticProfile
@@ -73,6 +80,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import com.example.ui.components.PendingConfirmDeletion
+import com.example.ui.components.UndoBannerState
+
 private const val TAG = "AuralisViewModel"
 
 data class OnlineLyricSearchState(
@@ -80,6 +90,34 @@ data class OnlineLyricSearchState(
     val candidates: List<OnlineLyricCandidate> = emptyList(),
     val sourceSummaries: Map<LyricSource, String> = emptyMap(),
     val error: String? = null
+)
+
+data class PendingLyricExportRequest(
+    val track: Track,
+    val suggestedFileName: String,
+    val mimeType: String,
+    val rawContent: String
+)
+
+data class PendingBurnConfirmRequest(
+    val track: Track,
+    val sourceLabel: String,
+    val lyricsText: String
+)
+
+data class PendingAudioWritePermissionRequest(
+    val track: Track,
+    val lyricsText: String,
+    val outcome: AudioTagWriteOutcome,
+    val intentSender: IntentSender
+)
+
+data class PendingAudioSaveCopyRequest(
+    val track: Track,
+    val lyricsText: String,
+    val suggestedFileName: String,
+    val mimeType: String,
+    val patchedBytes: ByteArray
 )
 
 class AuralisViewModel(application: Application) : AndroidViewModel(application) {
@@ -122,6 +160,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     val enableGeneralAudioMode: StateFlow<Boolean> = prefs.enableGeneralAudioModeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val deletionGuardMode: StateFlow<DeletionGuardMode> = prefs.deletionGuardModeFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DeletionGuardMode.CONFIRM_DIALOG)
 
     val scanFilter: StateFlow<ScanFilterConfig> = prefs.scanFilterFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ScanFilterConfig())
@@ -304,6 +345,24 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     private val _statusBanner = MutableStateFlow<String?>(null)
     val statusBanner: StateFlow<String?> = _statusBanner.asStateFlow()
+
+    private val _undoBanner = MutableStateFlow<UndoBannerState?>(null)
+    val undoBanner: StateFlow<UndoBannerState?> = _undoBanner.asStateFlow()
+
+    private val _pendingConfirmDeletion = MutableStateFlow<PendingConfirmDeletion?>(null)
+    val pendingConfirmDeletion: StateFlow<PendingConfirmDeletion?> = _pendingConfirmDeletion.asStateFlow()
+
+    private val _pendingLyricExport = MutableStateFlow<PendingLyricExportRequest?>(null)
+    val pendingLyricExport: StateFlow<PendingLyricExportRequest?> = _pendingLyricExport.asStateFlow()
+
+    private val _pendingBurnConfirm = MutableStateFlow<PendingBurnConfirmRequest?>(null)
+    val pendingBurnConfirm: StateFlow<PendingBurnConfirmRequest?> = _pendingBurnConfirm.asStateFlow()
+
+    private val _pendingAudioWritePermission = MutableStateFlow<PendingAudioWritePermissionRequest?>(null)
+    val pendingAudioWritePermission: StateFlow<PendingAudioWritePermissionRequest?> = _pendingAudioWritePermission.asStateFlow()
+
+    private val _pendingAudioSaveCopy = MutableStateFlow<PendingAudioSaveCopyRequest?>(null)
+    val pendingAudioSaveCopy: StateFlow<PendingAudioSaveCopyRequest?> = _pendingAudioSaveCopy.asStateFlow()
 
     private val _openNowPlayingTrigger = MutableStateFlow(false)
     val openNowPlayingTrigger: StateFlow<Boolean> = _openNowPlayingTrigger.asStateFlow()
@@ -1183,43 +1242,198 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun dismissUndoBanner() {
+        _undoBanner.value = null
+    }
+
+    fun dismissPendingConfirmDeletion() {
+        _pendingConfirmDeletion.value = null
+    }
+
+    fun confirmPendingDeletion() {
+        val pending = _pendingConfirmDeletion.value ?: return
+        _pendingConfirmDeletion.value = null
+        pending.onConfirm()
+    }
+
+    private fun requestProtectedDeletion(
+        confirmTitle: String,
+        confirmMessage: String,
+        confirmLabel: String = "确认删除",
+        deletedSummary: String,
+        restoredSummary: String,
+        onExecuteConfirmed: (() -> Unit)? = null,
+        performDeleteAndBuildUndo: suspend () -> (suspend () -> Unit)?
+    ) {
+        val executeImmediate: (showTopUndo: Boolean) -> Unit = { showTopUndo ->
+            haptics.tickLight()
+            viewModelScope.launch {
+                val undoAction = performDeleteAndBuildUndo()
+                onExecuteConfirmed?.invoke()
+                if (showTopUndo && undoAction != null) {
+                    _undoBanner.value = UndoBannerState(
+                        message = deletedSummary,
+                        onUndo = {
+                            viewModelScope.launch {
+                                undoAction()
+                                haptics.harmonicChime()
+                                showBanner("已恢复：$restoredSummary")
+                            }
+                        }
+                    )
+                } else {
+                    showBanner(deletedSummary)
+                }
+            }
+        }
+
+        when (deletionGuardMode.value) {
+            DeletionGuardMode.CONFIRM_DIALOG -> {
+                haptics.tickLight()
+                _pendingConfirmDeletion.value = PendingConfirmDeletion(
+                    title = confirmTitle,
+                    message = confirmMessage,
+                    confirmLabel = confirmLabel,
+                    onConfirm = { executeImmediate(false) }
+                )
+            }
+
+            DeletionGuardMode.TOP_UNDO_BANNER -> {
+                executeImmediate(true)
+            }
+        }
+    }
+
     fun batchRemoveTracksFromLibrary(trackIds: List<String>) {
         if (trackIds.isEmpty()) return
-        haptics.tickLight()
-        viewModelScope.launch {
-            trackIds.chunked(500).forEach { chunk ->
+        val uniqueIds = trackIds.distinct()
+        val label = if (uniqueIds.size == 1) {
+            val title = allTracks.value.firstOrNull { it.id == uniqueIds.first() }?.title ?: "该曲目"
+            "「$title」"
+        } else {
+            "${uniqueIds.size} 首曲目"
+        }
+        requestProtectedDeletion(
+            confirmTitle = "从曲库列表移除",
+            confirmMessage = "确定从 Auralis 曲库中移除$label 吗？\n手机本地原始音频文件不会被删除，之后可随时通过智能扫描重新收录。",
+            confirmLabel = "确认移出",
+            deletedSummary = "已从曲库移除$label（原文件保留）",
+            restoredSummary = "已撤回移除$label"
+        ) {
+            val tracksSnapshot = allTracks.value.filter { it.id in uniqueIds }
+            val refsSnapshot = playlistRefsFlow.value.filter { it.trackId in uniqueIds }
+            val lyricsSnapshot = uniqueIds.mapNotNull { id -> runCatching { customLyricDao.getCustomLyric(id) }.getOrNull() }
+            uniqueIds.chunked(500).forEach { chunk ->
                 playlistDao.removeTracksFromAllPlaylists(chunk)
                 trackDao.deleteTracksByIds(chunk)
             }
-            playbackController.removeTracksByIds(trackIds.toSet())
-            showBanner("已从曲库列表移除 ${trackIds.size} 首（本机原文件保留）")
+            playbackController.removeTracksByIds(uniqueIds.toSet())
+            if (tracksSnapshot.isEmpty()) null else suspend {
+                trackDao.upsertAll(tracksSnapshot)
+                if (refsSnapshot.isNotEmpty()) playlistDao.addTracksToPlaylist(refsSnapshot)
+                lyricsSnapshot.forEach { customLyricDao.saveCustomLyric(it) }
+            }
+        }
+    }
+
+    fun clearAllFavorites(trackIds: List<String>) {
+        if (trackIds.isEmpty()) return
+        val uniqueIds = trackIds.distinct()
+        requestProtectedDeletion(
+            confirmTitle = "取消全部红心收藏",
+            confirmMessage = "确定取消全部 ${uniqueIds.size} 首曲目的红心收藏吗？",
+            confirmLabel = "确认取消",
+            deletedSummary = "已取消 ${uniqueIds.size} 首红心收藏",
+            restoredSummary = "${uniqueIds.size} 首红心收藏"
+        ) {
+            uniqueIds.chunked(500).forEach { chunk ->
+                trackDao.setFavoriteForIds(chunk, false)
+            }
+            val current = playbackState.value.currentTrack
+            if (current != null && current.id in uniqueIds) {
+                playbackController.syncTrackMetadataUpdate(current.copy(isFavorite = false))
+            }
+            suspend {
+                uniqueIds.chunked(500).forEach { chunk ->
+                    trackDao.setFavoriteForIds(chunk, true)
+                }
+                val active = playbackState.value.currentTrack
+                if (active != null && active.id in uniqueIds) {
+                    playbackController.syncTrackMetadataUpdate(active.copy(isFavorite = true))
+                }
+            }
         }
     }
 
     fun clearRecentHistory() {
-        haptics.tickLight()
-        viewModelScope.launch {
+        val snapshot = allTracks.value.filter { it.lastPlayedAt > 0L }
+        if (snapshot.isEmpty()) {
+            showBanner("暂无近期聆听记录")
+            return
+        }
+        requestProtectedDeletion(
+            confirmTitle = "清空最近聆听记录",
+            confirmMessage = "确定清空全部 ${snapshot.size} 条最近聆听历史记录吗？",
+            confirmLabel = "确认清空",
+            deletedSummary = "已清空最近聆听记录",
+            restoredSummary = "最近聆听记录"
+        ) {
             trackDao.clearAllRecentHistory()
-            showBanner("已清空最近聆听记录")
+            suspend {
+                val latestMap = trackDao.getAllTracksSnapshot().associateBy { it.id }
+                val restored = snapshot.mapNotNull { old ->
+                    latestMap[old.id]?.copy(lastPlayedAt = old.lastPlayedAt)
+                }
+                if (restored.isNotEmpty()) trackDao.upsertAll(restored)
+            }
         }
     }
 
     fun removeFromRecentHistory(trackIds: List<String>) {
         if (trackIds.isEmpty()) return
-        haptics.tickLight()
-        viewModelScope.launch {
-            trackIds.chunked(500).forEach { chunk ->
+        val uniqueIds = trackIds.distinct()
+        val snapshot = allTracks.value.filter { it.id in uniqueIds && it.lastPlayedAt > 0L }
+        requestProtectedDeletion(
+            confirmTitle = "移出最近聆听",
+            confirmMessage = "确定从最近聆听中移出所选的 ${uniqueIds.size} 首曲目吗？",
+            confirmLabel = "确认移出",
+            deletedSummary = "已从最近聆听移出 ${uniqueIds.size} 首",
+            restoredSummary = "最近聆听曲目"
+        ) {
+            uniqueIds.chunked(500).forEach { chunk ->
                 trackDao.clearPlayHistoryForIds(chunk)
             }
-            showBanner("已从最近聆听移出 ${trackIds.size} 首")
+            if (snapshot.isEmpty()) null else suspend {
+                val latestMap = trackDao.getAllTracksSnapshot().associateBy { it.id }
+                val restored = snapshot.mapNotNull { old ->
+                    latestMap[old.id]?.copy(lastPlayedAt = old.lastPlayedAt)
+                }
+                if (restored.isNotEmpty()) trackDao.upsertAll(restored)
+            }
         }
     }
 
     fun clearMostPlayedStats() {
-        haptics.tickLight()
-        viewModelScope.launch {
+        val snapshot = allTracks.value.filter { it.playCount > 0 }
+        if (snapshot.isEmpty()) {
+            showBanner("暂无高频循环统计数据")
+            return
+        }
+        requestProtectedDeletion(
+            confirmTitle = "重置高频循环统计",
+            confirmMessage = "确定重置所有 ${snapshot.size} 首曲目的历史循环播放次数统计吗？",
+            confirmLabel = "确认重置",
+            deletedSummary = "已重置高频循环统计",
+            restoredSummary = "高频循环播放统计"
+        ) {
             trackDao.clearMostPlayedStats()
-            showBanner("已重置高频循环统计")
+            suspend {
+                val latestMap = trackDao.getAllTracksSnapshot().associateBy { it.id }
+                val restored = snapshot.mapNotNull { old ->
+                    latestMap[old.id]?.copy(playCount = old.playCount)
+                }
+                if (restored.isNotEmpty()) trackDao.upsertAll(restored)
+            }
         }
     }
 
@@ -1250,13 +1464,27 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun deletePlaylist(playlistId: Long) {
-        viewModelScope.launch {
+    fun deletePlaylist(playlistId: Long, onDeleted: (() -> Unit)? = null) {
+        val plEntity = playlists.value.firstOrNull { it.playlist.id == playlistId }?.playlist ?: return
+        val coverKey = com.example.model.PlaylistCoverKeys.custom(playlistId)
+        requestProtectedDeletion(
+            confirmTitle = "删除歌单",
+            confirmMessage = "确定永久删除歌单「${plEntity.name}」吗？（手机本地歌曲文件不会被删除）",
+            confirmLabel = "删除歌单",
+            deletedSummary = "已删除歌单「${plEntity.name}」",
+            restoredSummary = "歌单「${plEntity.name}」",
+            onExecuteConfirmed = onDeleted
+        ) {
+            val refsSnapshot = playlistRefsFlow.value.filter { it.playlistId == playlistId }
+            val coverSnapshot = playlistCoverConfigs.value[coverKey]
             playlistDao.clearPlaylistTracks(playlistId)
             playlistDao.deletePlaylist(playlistId)
-            prefs.updatePlaylistCoverConfig(com.example.model.PlaylistCoverKeys.custom(playlistId), null)
-            haptics.tickLight()
-            showBanner("已删除歌单")
+            prefs.updatePlaylistCoverConfig(coverKey, null)
+            suspend {
+                playlistDao.insertPlaylist(plEntity)
+                if (refsSnapshot.isNotEmpty()) playlistDao.addTracksToPlaylist(refsSnapshot)
+                if (coverSnapshot != null) prefs.updatePlaylistCoverConfig(coverKey, coverSnapshot)
+            }
         }
     }
 
@@ -1269,10 +1497,20 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun clearPlaylist(playlistId: Long) {
-        viewModelScope.launch {
+        val plName = playlists.value.firstOrNull { it.playlist.id == playlistId }?.playlist?.name ?: "歌单"
+        val refsSnapshot = playlistRefsFlow.value.filter { it.playlistId == playlistId }
+        if (refsSnapshot.isEmpty()) return
+        requestProtectedDeletion(
+            confirmTitle = "清空歌单",
+            confirmMessage = "确定清空「$plName」内的全部 ${refsSnapshot.size} 首曲目吗？",
+            confirmLabel = "确认清空",
+            deletedSummary = "已清空歌单「$plName」",
+            restoredSummary = "歌单「$plName」内的 ${refsSnapshot.size} 首曲目"
+        ) {
             playlistDao.clearPlaylistTracks(playlistId)
-            haptics.tickLight()
-            showBanner("已清空歌单内全部曲目")
+            suspend {
+                playlistDao.addTracksToPlaylist(refsSnapshot)
+            }
         }
     }
 
@@ -1306,13 +1544,261 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     fun removeTracksFromPlaylist(playlistId: Long, trackIds: List<String>) {
         if (trackIds.isEmpty()) return
-        haptics.tickLight()
-        viewModelScope.launch {
-            trackIds.chunked(500).forEach { chunk ->
+        val uniqueIds = trackIds.distinct()
+        val plName = playlists.value.firstOrNull { it.playlist.id == playlistId }?.playlist?.name ?: "歌单"
+        val refsSnapshot = playlistRefsFlow.value.filter { it.playlistId == playlistId && it.trackId in uniqueIds }
+        val label = if (uniqueIds.size == 1) {
+            val title = allTracks.value.firstOrNull { it.id == uniqueIds.first() }?.title ?: "该曲目"
+            "「$title」"
+        } else {
+            "${uniqueIds.size} 首曲目"
+        }
+        requestProtectedDeletion(
+            confirmTitle = "从歌单移出",
+            confirmMessage = "确定将$label 从「$plName」中移出吗？",
+            confirmLabel = "确认移出",
+            deletedSummary = "已从「$plName」移出$label",
+            restoredSummary = "「$plName」中的$label"
+        ) {
+            uniqueIds.chunked(500).forEach { chunk ->
                 playlistDao.removeTracksFromPlaylist(playlistId, chunk)
             }
-            showBanner("已从歌单移出 ${trackIds.size} 首")
+            if (refsSnapshot.isEmpty()) null else suspend {
+                playlistDao.addTracksToPlaylist(refsSnapshot)
+            }
         }
+    }
+
+    // Lyrics Export & Burn-to-Audio File
+    private suspend fun resolveBestTrackLyrics(track: Track): Triple<String, String?, String>? {
+        val saved = runCatching { customLyricDao.getCustomLyric(track.id) }.getOrNull()
+        if (saved != null && saved.rawContent.isNotBlank()) {
+            return Triple(saved.rawContent, saved.formatName, saved.sourceLabel.ifBlank { "已保存歌词" })
+        }
+        if (!track.embeddedLyrics.isNullOrBlank()) {
+            return Triple(track.embeddedLyrics, null, "音频内嵌歌词")
+        }
+        val sidecar = runCatching {
+            withContext(Dispatchers.IO) { scanner.findSidecarLyric(track) }
+        }.getOrNull()
+        if (sidecar != null && sidecar.first.isNotBlank()) {
+            return Triple(sidecar.first, null, sidecar.second)
+        }
+        return null
+    }
+
+    fun requestExportTrackLyrics(track: Track) {
+        haptics.tickLight()
+        viewModelScope.launch {
+            val resolved = resolveBestTrackLyrics(track)
+            if (resolved == null) {
+                showBanner("「${track.title}」暂未获取到歌词，请先在播放页匹配或导入歌词")
+                return@launch
+            }
+            val (rawContent, formatName, _) = resolved
+            val (fileName, mimeType) = AudioLyricsTagWriter.suggestExportFileNameAndMime(
+                track = track,
+                formatName = formatName,
+                rawContent = rawContent
+            )
+            _pendingLyricExport.value = PendingLyricExportRequest(
+                track = track,
+                suggestedFileName = fileName,
+                mimeType = mimeType,
+                rawContent = rawContent
+            )
+        }
+    }
+
+    fun completeExportTrackLyrics(targetUri: Uri?) {
+        val req = _pendingLyricExport.value ?: return
+        _pendingLyricExport.value = null
+        if (targetUri == null) return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(targetUri, "wt")?.use { out ->
+                        out.write(req.rawContent.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    } ?: error("无法打开目标文件输出流")
+                }
+            }
+            result.fold(
+                onSuccess = {
+                    haptics.harmonicChime()
+                    showBanner("已导出歌词文件：${req.suggestedFileName}")
+                },
+                onFailure = { err ->
+                    showBanner("导出歌词失败：${err.localizedMessage ?: "无写入权限"}")
+                }
+            )
+        }
+    }
+
+    fun requestBurnLyricsToAudio(track: Track) {
+        haptics.tickLight()
+        viewModelScope.launch {
+            val resolved = resolveBestTrackLyrics(track)
+            if (resolved == null) {
+                showBanner("「${track.title}」暂未获取到歌词，请先在播放页匹配或导入歌词后再刻录")
+                return@launch
+            }
+            val (rawContent, _, sourceLabel) = resolved
+            _pendingBurnConfirm.value = PendingBurnConfirmRequest(
+                track = track,
+                sourceLabel = sourceLabel,
+                lyricsText = rawContent
+            )
+        }
+    }
+
+    fun dismissBurnConfirm() {
+        _pendingBurnConfirm.value = null
+    }
+
+    fun confirmBurnLyricsToAudio() {
+        val req = _pendingBurnConfirm.value ?: return
+        _pendingBurnConfirm.value = null
+        haptics.tickLight()
+        viewModelScope.launch {
+            val uri = Uri.parse(req.track.contentUri)
+            val readResult = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("无法读取原音频文件，请确认文件未被移动或删除")
+                }
+            }
+            val originalBytes = readResult.getOrElse { err ->
+                showBanner("读取音频失败：${err.localizedMessage ?: "文件不可访问"}")
+                return@launch
+            }
+
+            val embedResult = withContext(Dispatchers.Default) {
+                AudioLyricsTagWriter.embedLyrics(
+                    originalBytes = originalBytes,
+                    lyricsText = req.lyricsText,
+                    fileName = req.track.fileName,
+                    mimeType = req.track.mimeType
+                )
+            }
+            val outcome = embedResult.getOrElse { err ->
+                showBanner(err.localizedMessage ?: "当前格式暂不支持直接刻录歌词")
+                return@launch
+            }
+
+            val directWrite = withContext(Dispatchers.IO) {
+                writePatchedAudioDirect(uri, outcome.patchedBytes)
+            }
+            directWrite.fold(
+                onSuccess = {
+                    finalizeBurnSuccess(req.track, req.lyricsText, outcome)
+                },
+                onFailure = { err ->
+                    // Handle Android 10+ RecoverableSecurityException or Android 11+ MediaStore.createWriteRequest
+                    val intentSender: IntentSender? = when {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && err is RecoverableSecurityException ->
+                            err.userAction.actionIntent.intentSender
+
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && uri.authority == MediaStore.AUTHORITY ->
+                            runCatching {
+                                MediaStore.createWriteRequest(context.contentResolver, listOf(uri)).intentSender
+                            }.getOrNull()
+
+                        else -> null
+                    }
+
+                    if (intentSender != null) {
+                        _pendingAudioWritePermission.value = PendingAudioWritePermissionRequest(
+                            track = req.track,
+                            lyricsText = req.lyricsText,
+                            outcome = outcome,
+                            intentSender = intentSender
+                        )
+                    } else {
+                        // Read-only SAF URI or restricted storage provider -> offer seamless Save Copy with embedded lyrics
+                        _pendingAudioSaveCopy.value = PendingAudioSaveCopyRequest(
+                            track = req.track,
+                            lyricsText = req.lyricsText,
+                            suggestedFileName = req.track.fileName.ifBlank { "${req.track.title}.${req.track.codecLabel.lowercase()}" },
+                            mimeType = req.track.mimeType.ifBlank { "audio/*" },
+                            patchedBytes = outcome.patchedBytes
+                        )
+                        showBanner("原路径为只读授权，请选择保存位置以输出已刻录歌词的完整音频")
+                    }
+                }
+            )
+        }
+    }
+
+    fun completeAuthorizedAudioWrite(granted: Boolean) {
+        val req = _pendingAudioWritePermission.value ?: return
+        _pendingAudioWritePermission.value = null
+        if (!granted) {
+            showBanner("未授予系统文件修改权限，已取消刻录")
+            return
+        }
+        viewModelScope.launch {
+            val uri = Uri.parse(req.track.contentUri)
+            val result = withContext(Dispatchers.IO) {
+                writePatchedAudioDirect(uri, req.outcome.patchedBytes)
+            }
+            result.fold(
+                onSuccess = {
+                    finalizeBurnSuccess(req.track, req.lyricsText, req.outcome)
+                },
+                onFailure = { err ->
+                    showBanner("刻录写入失败：${err.localizedMessage ?: "系统拒绝写入"}")
+                }
+            )
+        }
+    }
+
+    fun completeAudioSaveCopy(targetUri: Uri?) {
+        val req = _pendingAudioSaveCopy.value ?: return
+        _pendingAudioSaveCopy.value = null
+        if (targetUri == null) return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                writePatchedAudioDirect(targetUri, req.patchedBytes)
+            }
+            result.fold(
+                onSuccess = {
+                    haptics.harmonicChime()
+                    showBanner("已另存为内嵌歌词的音频文件：${req.suggestedFileName}")
+                },
+                onFailure = { err ->
+                    showBanner("另存音频失败：${err.localizedMessage ?: "无写入权限"}")
+                }
+            )
+        }
+    }
+
+    private fun writePatchedAudioDirect(uri: Uri, bytes: ByteArray): Result<Unit> = runCatching {
+        context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+            out.write(bytes)
+            out.flush()
+            return@runCatching
+        }
+        context.contentResolver.openFileDescriptor(uri, "rwt")?.use { pfd ->
+            java.io.FileOutputStream(pfd.fileDescriptor).use { fos ->
+                fos.channel.truncate(0)
+                fos.write(bytes)
+                fos.flush()
+            }
+            return@runCatching
+        }
+        error("无法获取音频文件写入流")
+    }
+
+    private suspend fun finalizeBurnSuccess(track: Track, lyricsText: String, outcome: AudioTagWriteOutcome) {
+        val updatedTrack = track.copy(embeddedLyrics = lyricsText)
+        trackDao.upsert(updatedTrack)
+        if (playbackState.value.currentTrack?.id == track.id) {
+            playbackController.syncTrackMetadataUpdate(updatedTrack)
+            loadLyricsForTrack(updatedTrack)
+        }
+        haptics.harmonicChime()
+        showBanner("已将歌词刻录到原音频「${track.title}」(${outcome.tagFieldLabel})")
     }
 
     fun movePlaylistTrack(playlistId: Long, fromIndex: Int, toIndex: Int) {
@@ -1347,6 +1833,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     fun setEnableGeneralAudioMode(enabled: Boolean) = viewModelScope.launch {
         haptics.tickLight()
         prefs.setEnableGeneralAudioMode(enabled)
+    }
+    fun setDeletionGuardMode(mode: DeletionGuardMode) = viewModelScope.launch {
+        haptics.tickLight()
+        prefs.setDeletionGuardMode(mode)
+        showBanner("删除保护已切换为：${mode.shortLabel}")
     }
     fun setHapticProfile(profile: HapticProfile) = viewModelScope.launch {
         prefs.setHapticProfile(profile)
@@ -1409,13 +1900,25 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteCustomEqPreset(presetId: String) {
-        haptics.tickLight()
-        viewModelScope.launch {
+        val snapshot = customEqPresets.value.firstOrNull { it.id == presetId } ?: return
+        val previousEqState = eqState.value
+        requestProtectedDeletion(
+            confirmTitle = "删除自定义均衡器预设",
+            confirmMessage = "确定删除自定义预设「${snapshot.name}」吗？",
+            confirmLabel = "确认删除",
+            deletedSummary = "已删除自定义预设「${snapshot.name}」",
+            restoredSummary = "自定义预设「${snapshot.name}」"
+        ) {
             prefs.deleteCustomEqPreset(presetId)
             if (eqState.value.presetId == presetId) {
                 updateEqState(eqState.value.copy(presetId = "custom"))
             }
-            showBanner("已删除自定义预设")
+            suspend {
+                prefs.saveCustomEqPreset(snapshot)
+                if (previousEqState.presetId == presetId) {
+                    updateEqState(previousEqState)
+                }
+            }
         }
     }
 
@@ -1562,12 +2065,21 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deleteAiSession(sessionId: Long) {
-        haptics.tickLight()
-        aiSessionJobs.remove(sessionId)?.cancel()
-        _aiSessionRuntimeStates.update { it - sessionId }
-        viewModelScope.launch {
+        val sessionSnapshot = aiSessions.value.firstOrNull { it.id == sessionId } ?: return
+        val wasActive = _activeAiSessionId.value == sessionId
+        requestProtectedDeletion(
+            confirmTitle = "删除 AI 对话窗口",
+            confirmMessage = "确定删除对话窗口「${sessionSnapshot.title}」及其全部历史消息吗？",
+            confirmLabel = "确认删除",
+            deletedSummary = "已删除 AI 对话「${sessionSnapshot.title}」",
+            restoredSummary = "AI 对话「${sessionSnapshot.title}」"
+        ) {
+            val messagesSnapshot = aiChatDao.getMessagesSnapshot(sessionId)
+            aiSessionJobs.remove(sessionId)?.cancel()
+            _aiSessionRuntimeStates.update { it - sessionId }
             aiChatDao.deleteSession(sessionId)
             val remaining = aiChatDao.getSessionsSnapshot()
+            var autoCreatedFallbackId: Long? = null
             if (remaining.isEmpty()) {
                 val cfg = prefs.aiConfigFlow.first()
                 val freshId = aiChatDao.insertSession(
@@ -1577,9 +2089,23 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                         reasoningEffort = cfg.reasoningEffort.apiValue
                     )
                 )
+                autoCreatedFallbackId = freshId
                 _activeAiSessionId.value = freshId
-            } else if (_activeAiSessionId.value == sessionId) {
+            } else if (wasActive) {
                 _activeAiSessionId.value = remaining.first().id
+            }
+            suspend {
+                aiChatDao.insertSession(sessionSnapshot)
+                messagesSnapshot.forEach { msg -> aiChatDao.insertMessage(msg) }
+                autoCreatedFallbackId?.let { fallbackId ->
+                    val fallbackMsgs = aiChatDao.getMessagesSnapshot(fallbackId)
+                    if (fallbackMsgs.isEmpty()) {
+                        aiChatDao.deleteSession(fallbackId)
+                    }
+                }
+                if (wasActive) {
+                    _activeAiSessionId.value = sessionSnapshot.id
+                }
             }
         }
     }

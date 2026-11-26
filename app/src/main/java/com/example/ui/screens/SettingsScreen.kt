@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material3.Button
@@ -75,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
 import com.example.model.AppVersionInfo
+import com.example.model.DeletionGuardMode
 import com.example.model.HapticProfile
 import com.example.model.LYRIC_FONT_SCALE_TIERS
 import com.example.model.LyricSettings
@@ -96,6 +98,7 @@ fun SettingsScreen(
     navBarStyle: NavBarStyle,
     showLibraryHero: Boolean,
     enableGeneralAudioMode: Boolean,
+    deletionGuardMode: DeletionGuardMode = DeletionGuardMode.CONFIRM_DIALOG,
     hapticProfile: HapticProfile,
     scanFilter: ScanFilterConfig,
     lyricSettings: LyricSettings,
@@ -104,6 +107,7 @@ fun SettingsScreen(
     onSetNavBarStyle: (NavBarStyle) -> Unit,
     onSetShowLibraryHero: (Boolean) -> Unit,
     onSetEnableGeneralAudioMode: (Boolean) -> Unit,
+    onSetDeletionGuardMode: (DeletionGuardMode) -> Unit = {},
     onSetHapticProfile: (HapticProfile) -> Unit,
     onUpdateScanFilter: (ScanFilterConfig) -> Unit,
     onUpdateLyricSettings: (LyricSettings) -> Unit,
@@ -865,6 +869,64 @@ fun SettingsScreen(
             }
         }
 
+        // Unified Deletion Guard Mode Setting Card
+        item {
+            SettingsCard(
+                icon = Icons.Rounded.Shield,
+                title = "防误删保护机制",
+                subtitle = "统一守护自定义 EQ 预设、AI 对话记录、歌单曲目与曲库移出等全部删除操作"
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DeletionGuardMode.entries.forEach { mode ->
+                        val selected = deletionGuardMode == mode
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (selected) RubyAccent.copy(alpha = 0.14f)
+                                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                                )
+                                .border(
+                                    width = if (selected) 1.dp else 0.6.dp,
+                                    color = if (selected) RubyAccent else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                .clickable { onSetDeletionGuardMode(mode) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .testTag("settings_deletion_guard_${mode.name.lowercase()}"),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = mode.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = mode.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3
+                            )
+                        }
+                    }
+                }
+                Text(
+                    text = if (deletionGuardMode == DeletionGuardMode.CONFIRM_DIALOG) {
+                        "当前模式：删除前强制弹出确认框，彻底杜绝误触丢失。"
+                    } else {
+                        "当前模式：执行删除后在屏幕顶部弹出置顶提示条，支持 6 秒内一键无损撤销，或左右/上滑关闭。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // About & Semantic Version Changelog Card
         item {
             val latestNote = AppVersionInfo.RELEASE_NOTES.first()
@@ -954,7 +1016,7 @@ fun SettingsScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("查看完整版本更新记录（共 ${AppVersionInfo.RELEASE_NOTES.size} 个版本）")
+                    Text("查看完整版本日志与早期演进脉络（共 ${AppVersionInfo.RELEASE_NOTES.size} 个公开版本）")
                 }
             }
         }
@@ -1059,6 +1121,95 @@ fun SettingsScreen(
                                         )
                                         Text(
                                             text = bullet,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Pre-v0.9.0 GitHub Origin & Evolution Storyline Card
+                    item(key = "pre_release_origin") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(ChampagneGold.copy(alpha = 0.08f))
+                                .border(
+                                    width = 0.75.dp,
+                                    color = ChampagneGold.copy(alpha = 0.40f),
+                                    shape = RoundedCornerShape(18.dp)
+                                )
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "v0.9.0 之前 · 早期演进脉络",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ChampagneGold
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(ChampagneGold.copy(alpha = 0.18f))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "版本溯源",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ChampagneGold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = AppVersionInfo.PRE_RELEASE_NOTE,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AppVersionInfo.PRE_RELEASE_MILESTONES.forEachIndexed { idx, milestone ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f))
+                                            .padding(horizontal = 11.dp, vertical = 9.dp),
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(RubyAccent.copy(alpha = 0.14f))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "阶段 ${idx + 1}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = RubyAccent
+                                                )
+                                            }
+                                            Text(
+                                                text = milestone.phase,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Text(
+                                            text = milestone.summary,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
