@@ -505,17 +505,18 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 7)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 8)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -895,10 +896,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v0.9.6 is active
+        // Liquid Glass is the default nav bar & v0.9.7 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -908,6 +909,159 @@ class ExampleUnitTest {
             com.example.ui.theme.ChampagneGoldLight.green * 0.587f +
             com.example.ui.theme.ChampagneGoldLight.blue * 0.114f
         assertTrue("Light gold luminance ($lightGoldLum) should be well below dark gold ($darkGoldLum)", lightGoldLum < 0.50f && lightGoldLum < darkGoldLum - 0.25f)
+    }
+
+    @Test
+    fun settingsBackupCodecRoundTripsAndRedactsApiKeyByDefault() {
+        val original = com.example.data.local.SettingsBackupSnapshot(
+            darkTheme = false,
+            hapticProfile = com.example.model.HapticProfile.SUBTLE,
+            navBarStyle = com.example.model.NavBarStyle.CLASSIC,
+            visualEffectsEnhanced = true,
+            showLibraryHero = false,
+            showGeneralAudioNotice = false,
+            enableGeneralAudioMode = true,
+            deletionGuardMode = com.example.model.DeletionGuardMode.TOP_UNDO_BANNER,
+            scanFilter = com.example.model.ScanFilterConfig(
+                minDurationSec = 45,
+                minSizeKb = 750,
+                excludedFolders = setOf("WeChat", "Recordings")
+            ),
+            lyricSettings = LyricSettings(
+                fontScale = 1.20f,
+                fontWeight = 800,
+                activeOnlineSource = LyricSource.QQ_MUSIC,
+                enableLyricBlur = true,
+                enableImmersiveLyrics = true
+            ),
+            eqState = com.example.model.EqState(
+                enabled = true,
+                presetId = "custom_1",
+                bandLevelsDb = listOf(3f, 2f, 1f, 0f, -1f, 0f, 1f, 2f, 3f, 4f),
+                bassBoostPercent = 35,
+                virtualizerPercent = 20
+            ),
+            customEqPresets = listOf(
+                com.example.model.EqPreset(
+                    id = "custom_1",
+                    name = "深夜爵士",
+                    bandLevelsDb = listOf(3f, 2f, 1f, 0f, -1f, 0f, 1f, 2f, 3f, 4f),
+                    bassBoostPercent = 35,
+                    virtualizerPercent = 20,
+                    isCustom = true
+                )
+            ),
+            aiConfig = AiConfig(
+                deepSeekApiKey = "sk-secret-test-key-123",
+                deepSeekModelId = "deepseek-flash",
+                reasoningEffort = ReasoningEffortLevel.HIGH
+            ),
+            playlistCoverConfigs = mapOf(
+                "artist:星瞳" to com.example.model.PlaylistCoverConfig(
+                    mode = com.example.model.PlaylistCoverMode.SINGLE_TRACK,
+                    trackIds = listOf("track_1")
+                )
+            ),
+            audioBookmarks = mapOf(
+                "audio_1" to listOf(
+                    com.example.model.AudioBookmark("bm1", 65_000L, "重点片段", 1_700_000_000L)
+                )
+            )
+        )
+
+        // 1. Default export strips API key for privacy
+        val sanitizedJson = com.example.data.local.SettingsBackupCodec.encode(
+            snapshot = original,
+            includeApiKey = false,
+            exportedAtMs = 1_760_000_000_000L
+        )
+        assertFalse(sanitizedJson.contains("sk-secret-test-key-123"))
+        val decodedSanitized = com.example.data.local.SettingsBackupCodec.decode(sanitizedJson).getOrThrow()
+        assertFalse(decodedSanitized.preview.includesApiKey)
+        assertEquals("", decodedSanitized.snapshot.aiConfig.deepSeekApiKey)
+        assertFalse(decodedSanitized.snapshot.darkTheme)
+        assertEquals(com.example.model.NavBarStyle.CLASSIC, decodedSanitized.snapshot.navBarStyle)
+        assertEquals(com.example.model.DeletionGuardMode.TOP_UNDO_BANNER, decodedSanitized.snapshot.deletionGuardMode)
+        assertEquals(45, decodedSanitized.snapshot.scanFilter.minDurationSec)
+        assertEquals(800, decodedSanitized.snapshot.lyricSettings.fontWeight)
+        assertEquals(1, decodedSanitized.preview.customEqPresetCount)
+        assertEquals(1, decodedSanitized.preview.playlistCoverCount)
+        assertEquals(1, decodedSanitized.preview.bookmarkCount)
+
+        // 2. Opt-in export retains API key
+        val fullJson = com.example.data.local.SettingsBackupCodec.encode(
+            snapshot = original,
+            includeApiKey = true,
+            exportedAtMs = 1_760_000_000_000L
+        )
+        val decodedFull = com.example.data.local.SettingsBackupCodec.decode(fullJson).getOrThrow()
+        assertTrue(decodedFull.preview.includesApiKey)
+        assertEquals("sk-secret-test-key-123", decodedFull.snapshot.aiConfig.deepSeekApiKey)
+
+        // 3. Invalid / unrelated JSON fails cleanly
+        assertTrue(com.example.data.local.SettingsBackupCodec.decode("""{"hello":"world"}""").isFailure)
+        assertTrue(com.example.data.local.SettingsBackupCodec.decode("not json").isFailure)
+    }
+
+    @Test
+    fun lyricInterludeDetectorHandlesIntroExplicitMarkersAndLongLrcGapsDynamically() {
+        val rawLrcWithBlankMarker = """
+            [00:12.00]把星子放入眸
+            [00:16.00]
+            [00:30.00]我是只化身孤岛的蓝鲸
+            [00:34.00]有着最巨大的身影
+        """.trimIndent()
+
+        val doc = com.example.data.lyrics.LyricParser.parse(
+            rawInput = rawLrcWithBlankMarker,
+            enableSimulatedWordByWord = false
+        )
+        assertEquals(3, doc.lines.size)
+        assertEquals(16_000L, doc.lines[0].endMs)
+
+        // 1. Intro (0ms..12000ms) -> active intro slot (-1)
+        val intro = com.example.ui.components.detectActiveLyricInterlude(doc.lines, 6_000L, true)
+        assertEquals(-1, intro?.afterLineIndex)
+        assertEquals(0.5f, intro!!.progressAt(6_000L), 0.01f)
+
+        // 2. While singing line 0 (12000ms..16000ms) -> NO interlude dots
+        assertNull(com.example.ui.components.detectActiveLyricInterlude(doc.lines, 14_000L, true))
+
+        // 3. During instrumental interlude (16000ms..30000ms) -> active interlude after line 0
+        val interlude = com.example.ui.components.detectActiveLyricInterlude(doc.lines, 23_000L, true)
+        assertEquals(0, interlude?.afterLineIndex)
+        assertEquals(0.5f, interlude!!.progressAt(23_000L), 0.01f)
+
+        // 4. Short normal vocal gap between line 1 (30s) and line 2 (34s) -> NO interlude dots
+        assertNull(com.example.ui.components.detectActiveLyricInterlude(doc.lines, 32_500L, true))
+    }
+
+    @Test
+    fun breathingDotVisualsSweepByOpacityAndLockTargetSizeOnceCompleted() {
+        // At 50% interlude progress (matching user reference):
+        // - Dot 0 (0..33%): fully swept -> full opacity 1.0, locked at target scale 1.0 across different breath phases
+        val dot0PhaseA = com.example.ui.components.computeBreathingDotVisuals(0.50f, 0f, 0)
+        val dot0PhaseB = com.example.ui.components.computeBreathingDotVisuals(0.50f, 2.1f, 0)
+        assertTrue(dot0PhaseA.isLocked)
+        assertEquals(1.0f, dot0PhaseA.alpha, 0.001f)
+        assertEquals(1.0f, dot0PhaseA.scale, 0.001f)
+        assertEquals(1.0f, dot0PhaseB.scale, 0.001f)
+
+        // - Dot 1 (33..66%): mid-transition -> intermediate uniform alpha (between dim 0.28 and bright 1.0), still alive
+        val dot1Mid = com.example.ui.components.computeBreathingDotVisuals(0.50f, 0f, 1)
+        assertFalse(dot1Mid.isLocked)
+        assertTrue("Mid dot alpha (${dot1Mid.alpha}) should be smoothly transitioning", dot1Mid.alpha in 0.50f..0.78f)
+
+        // - Dot 2 (66..100%): unswept -> base dim translucent alpha (~0.28), actively breathing in size as phase advances
+        val dot2Trough = com.example.ui.components.computeBreathingDotVisuals(0.50f, 0.0f, 2)
+        val dot2Peak = com.example.ui.components.computeBreathingDotVisuals(0.50f, 3.14159f, 2)
+        assertFalse(dot2Trough.isLocked)
+        assertEquals(0.28f, dot2Trough.alpha, 0.001f)
+        assertEquals(0.28f, dot2Peak.alpha, 0.001f)
+        assertTrue(
+            "Unswept dot must visibly breathe in size across phases (${dot2Trough.scale} vs ${dot2Peak.scale})",
+            kotlin.math.abs(dot2Peak.scale - dot2Trough.scale) > 0.12f
+        )
     }
 }
 

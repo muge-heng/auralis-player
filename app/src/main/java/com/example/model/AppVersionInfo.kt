@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.6"
-    const val PREVIOUS_VERSION = "0.9.5"
+    const val CURRENT_VERSION = "0.9.7"
+    const val PREVIOUS_VERSION = "0.9.6"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,19 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.6",
+            version = "0.9.7",
             tag = "当前版本",
+            title = "工坊多级架构重塑 · 本地设置备份恢复 · 默认应用修复 · 歌词灵动间奏呼吸点",
+            highlights = listOf(
+                "重构「工坊（设置页）」为清晰的两级菜单架构：主页聚焦硬件均衡器、AI 对话、曲库导入查重与四大分类入口（外观动效与触觉、多源逐字歌词引擎、曲库展示与扫描筛选、数据备份安全与系统），实时展示摘要并支持流畅侧滑切换与返回。",
+                "修复「系统默认音乐播放器」按钮此前误跳转至应用信息（App Info）页面的问题：现直接跳转系统「默认应用」设置页，并在 Android 12+ 额外提供直达本应用「默认打开」关联配置的快捷入口。",
+                "新增本地设置备份导出与导入恢复功能：支持导出为标准 JSON 文件（默认脱敏隐藏 AI API 密钥，也可按需勾选包含），导入前弹出明细预览弹窗确认后一键还原外观、歌词、扫描规则、自定义 EQ 预设、歌单封面与时间书签。",
+                "歌词舞台新增前奏/间奏动态三点呼吸指示器：仅在播放进入无歌词段落的前奏或间奏时动态展开出现（手动滑动浏览不会出现静态占位），三颗圆点以整体透明度平滑过渡点亮，未扫过圆点缓慢缩放呼吸，完全变白点亮后锁定目标尺寸保持沉稳。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.6",
+            tag = "历史版本",
             title = "Liquid Glass 默认底栏与跟手拖动切换 · 浅色玻璃与深金色全面精修",
             highlights = listOf(
                 "正式将全透明悬浮「Liquid Glass 底栏」设为应用默认底栏，并新增类似 Apple 液态玻璃风格的按住拖动交互：按住任意标签左右滑动时，液态玻璃透镜实时膨胀跟手跟随、跨越页签触发阻尼触觉刻度与高亮预览，松手后再顺滑切换页面。",

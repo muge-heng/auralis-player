@@ -638,6 +638,7 @@ fun NowPlayingSheet(
                         document = lyricDocument,
                         positionMs = playbackState.positionMs,
                         settings = lyricSettings,
+                        isPlaying = playbackState.isPlaying,
                         isImmersive = isImmersiveLyrics,
                         darkTheme = darkTheme,
                         onSeekTo = onSeekTo,

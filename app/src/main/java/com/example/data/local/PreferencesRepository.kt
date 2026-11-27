@@ -30,6 +30,7 @@ import com.example.model.ScanFilterConfig
 import com.example.model.normalizeEqBands
 import com.example.model.snapLyricFontScale
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -411,6 +412,107 @@ class PreferencesRepository(private val context: Context) {
                 map[cleanTrackId] = updated
             }
             prefs[Keys.AUDIO_BOOKMARKS_JSON] = serializeAudioBookmarksJson(map)
+        }
+    }
+
+    suspend fun exportSettingsSnapshot(): SettingsBackupSnapshot {
+        return SettingsBackupSnapshot(
+            darkTheme = darkThemeFlow.first(),
+            hapticProfile = hapticProfileFlow.first(),
+            navBarStyle = navBarStyleFlow.first(),
+            visualEffectsEnhanced = visualEffectsEnhancedFlow.first(),
+            showLibraryHero = showLibraryHeroFlow.first(),
+            showGeneralAudioNotice = showGeneralAudioNoticeFlow.first(),
+            enableGeneralAudioMode = enableGeneralAudioModeFlow.first(),
+            deletionGuardMode = deletionGuardModeFlow.first(),
+            scanFilter = scanFilterFlow.first(),
+            lyricSettings = lyricSettingsFlow.first(),
+            eqState = eqStateFlow.first(),
+            customEqPresets = customEqPresetsFlow.first(),
+            aiConfig = aiConfigFlow.first(),
+            aiCatalogAttachmentPrefs = aiCatalogAttachmentPrefsFlow.first(),
+            playlistCoverConfigs = playlistCoverConfigsFlow.first(),
+            audioBookmarks = audioBookmarksFlow.first()
+        )
+    }
+
+    suspend fun importSettingsSnapshot(
+        snapshot: SettingsBackupSnapshot,
+        restoreApiKey: Boolean
+    ) {
+        val normalizedEqBands = normalizeEqBands(snapshot.eqState.bandLevelsDb, EQ_BAND_COUNT)
+        val cleanCustomPresets = snapshot.customEqPresets.map { preset ->
+            preset.copy(
+                bandLevelsDb = normalizeEqBands(preset.bandLevelsDb, EQ_BAND_COUNT),
+                bassBoostPercent = preset.bassBoostPercent.coerceIn(0, 100),
+                virtualizerPercent = preset.virtualizerPercent.coerceIn(0, 100),
+                isCustom = true
+            )
+        }
+        context.auralisDataStore.edit { prefs ->
+            prefs[Keys.DARK_THEME] = snapshot.darkTheme
+            prefs[Keys.HAPTIC_PROFILE] = snapshot.hapticProfile.name
+            prefs[Keys.NAV_BAR_STYLE] = snapshot.navBarStyle.name
+            prefs[Keys.VISUAL_EFFECTS_ENHANCED] = snapshot.visualEffectsEnhanced
+            prefs[Keys.SHOW_LIBRARY_HERO] = snapshot.showLibraryHero
+            prefs[Keys.SHOW_GENERAL_AUDIO_NOTICE] = snapshot.showGeneralAudioNotice
+            prefs[Keys.ENABLE_GENERAL_AUDIO_MODE] = snapshot.enableGeneralAudioMode
+            prefs[Keys.DELETION_GUARD_MODE] = snapshot.deletionGuardMode.name
+
+            // Scan Filter
+            prefs[Keys.MIN_DURATION_SEC] = snapshot.scanFilter.minDurationSec
+            prefs[Keys.MIN_SIZE_KB] = snapshot.scanFilter.minSizeKb
+            prefs[Keys.EXCLUDE_SYSTEM_AUDIO] = snapshot.scanFilter.excludeSystemAudio
+            prefs[Keys.SCAN_REQUIRE_METADATA] = snapshot.scanFilter.requireMetadata
+            prefs[Keys.SCAN_REQUIRE_ARTIST] = snapshot.scanFilter.requireArtist
+            prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] = snapshot.scanFilter.requireAlbumOrArt
+            prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] = snapshot.scanFilter.classifyUnverifiedAsGeneralAudio
+            prefs[Keys.EXCLUDED_FOLDERS] = snapshot.scanFilter.excludedFolders
+
+            // Lyrics
+            prefs[Keys.SIMULATED_WORD_BY_WORD] = snapshot.lyricSettings.enableSimulatedWordByWord
+            prefs[Keys.SHOW_TRANSLATION] = snapshot.lyricSettings.showTranslation
+            prefs[Keys.LYRIC_FONT_SCALE] = snapLyricFontScale(snapshot.lyricSettings.fontScale)
+            prefs[Keys.LYRIC_FONT_WEIGHT] = snapshot.lyricSettings.fontWeight.coerceIn(300, 900)
+            prefs[Keys.KEEP_SCREEN_ON_LYRICS] = snapshot.lyricSettings.keepScreenOnInLyrics
+            prefs[Keys.LYRIC_ACTIVE_SOURCE] = snapshot.lyricSettings.activeOnlineSource.name
+            prefs[Keys.LYRIC_ENABLE_BLUR] = snapshot.lyricSettings.enableLyricBlur
+            prefs[Keys.LYRIC_ENABLE_IMMERSIVE] = snapshot.lyricSettings.enableImmersiveLyrics
+
+            // Equalizer & Custom Presets
+            prefs[Keys.EQ_ENABLED] = snapshot.eqState.enabled
+            prefs[Keys.EQ_PRESET_ID] = snapshot.eqState.presetId
+            prefs[Keys.EQ_BANDS_CSV] = normalizedEqBands.joinToString(",")
+            prefs[Keys.EQ_BASS_BOOST] = snapshot.eqState.bassBoostPercent.coerceIn(0, 100)
+            prefs[Keys.EQ_VIRTUALIZER] = snapshot.eqState.virtualizerPercent.coerceIn(0, 100)
+            prefs[Keys.EQ_CUSTOM_PRESETS_JSON] = serializeCustomPresetsJson(cleanCustomPresets)
+
+            // AI Config (preserve local API key unless explicitly restored with a non-blank key)
+            prefs[Keys.AI_PROVIDER] = snapshot.aiConfig.activeProvider.name
+            if (restoreApiKey && snapshot.aiConfig.deepSeekApiKey.isNotBlank()) {
+                prefs[Keys.DEEPSEEK_API_KEY] = snapshot.aiConfig.deepSeekApiKey.trim()
+            }
+            prefs[Keys.DEEPSEEK_BASE_URL] = snapshot.aiConfig.deepSeekBaseUrl.trim().ifBlank { "https://api.deepseek.com" }
+            prefs[Keys.DEEPSEEK_MODEL_ID] = snapshot.aiConfig.deepSeekModelId.trim().ifBlank { "deepseek-flash" }
+            prefs[Keys.AI_ENABLE_VISION] = snapshot.aiConfig.enableVisionForCovers
+            prefs[Keys.AI_ENABLE_WEB_SEARCH] = snapshot.aiConfig.enableWebSearch
+            prefs[Keys.AI_MAX_OUTPUT_TOKENS] = snapshot.aiConfig.maxOutputTokens.coerceAtLeast(256)
+            prefs[Keys.AI_REASONING_EFFORT] = snapshot.aiConfig.reasoningEffort.apiValue
+            prefs[Keys.AI_ENABLED_EFFORTS] = snapshot.aiConfig.enabledReasoningLevels.map { it.name }.toSet()
+            prefs[Keys.AI_SHOW_THINKING] = snapshot.aiConfig.showThinkingProcess
+            prefs[Keys.AI_ENABLE_STREAMING] = snapshot.aiConfig.enableStreaming
+            prefs[Keys.AI_AUTO_TITLE] = snapshot.aiConfig.autoGenerateSessionTitle
+            prefs[Keys.AI_SYSTEM_PROMPT] = snapshot.aiConfig.customSystemPrompt
+
+            // AI Catalog Prefs
+            prefs[Keys.AI_ATTACH_CATALOG_ENABLED] = snapshot.aiCatalogAttachmentPrefs.enabled
+            prefs[Keys.AI_ATTACH_CATALOG_CUSTOMIZED] = snapshot.aiCatalogAttachmentPrefs.hasCustomSelection
+            prefs[Keys.AI_ATTACH_CATALOG_TRACK_IDS] = snapshot.aiCatalogAttachmentPrefs.selectedTrackIds
+            prefs[Keys.AI_ATTACH_CATALOG_LYRIC_IDS] = snapshot.aiCatalogAttachmentPrefs.lyricTrackIds
+
+            // Playlist Cover Configs & Bookmarks
+            prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON] = serializePlaylistCoverConfigsJson(snapshot.playlistCoverConfigs)
+            prefs[Keys.AUDIO_BOOKMARKS_JSON] = serializeAudioBookmarksJson(snapshot.audioBookmarks)
         }
     }
 

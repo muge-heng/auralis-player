@@ -108,6 +108,7 @@ fun LyricStageView(
     document: LyricDocument,
     positionMs: Long,
     settings: LyricSettings,
+    isPlaying: Boolean = true,
     isImmersive: Boolean = false,
     darkTheme: Boolean = true,
     onSeekTo: (Long) -> Unit,
@@ -162,33 +163,59 @@ fun LyricStageView(
         }
     }
 
-    // Compute step direction synchronously when activeIndex changes so every LyricLineRow
+    val activeInterlude = remember(document.lines, effectivePosMs, document.hasSyncedTimestamps) {
+        detectActiveLyricInterlude(
+            lines = document.lines,
+            effectivePosMs = effectivePosMs,
+            hasSyncedTimestamps = document.hasSyncedTimestamps
+        )
+    }
+
+    val effectiveActiveLineIndex = if (activeInterlude != null) -1 else activeIndex
+
+    // Compute step direction synchronously when active lyric line changes so every LyricLineRow
     // receives the exact transition direction on the very first frame (including 0 -> 1 & backward seeks).
     val stepTracker = remember(document.rawContent) { IntArray(1) { -1 } }
-    val stepDirection = remember(document.rawContent, activeIndex) {
+    val stepDirection = remember(document.rawContent, effectiveActiveLineIndex) {
         val prev = stepTracker[0]
         val dir = when {
-            activeIndex < 0 || prev < 0 -> 0
-            activeIndex > prev -> 1
-            activeIndex < prev -> -1
+            effectiveActiveLineIndex < 0 || prev < 0 -> 0
+            effectiveActiveLineIndex > prev -> 1
+            effectiveActiveLineIndex < prev -> -1
             else -> 0
         }
-        if (activeIndex >= 0) {
-            stepTracker[0] = activeIndex
+        if (effectiveActiveLineIndex >= 0) {
+            stepTracker[0] = effectiveActiveLineIndex
         }
         dir
     }
 
+    // Target LazyColumn item index (slot 0 = dynamic intro breathing dots; slot i+1 = lyric line i + trailing interlude slot)
+    val focalListIndex = when {
+        activeInterlude != null && activeInterlude.afterLineIndex == -1 -> 0
+        activeInterlude != null -> activeInterlude.afterLineIndex + 1
+        effectiveActiveLineIndex >= 0 -> effectiveActiveLineIndex + 1
+        else -> -1
+    }
+    val focalIsMidInterlude = activeInterlude != null && activeInterlude.afterLineIndex >= 0
+
     // Elastic spring auto-scroll to focal anchor (never overrides manual user drag)
-    LaunchedEffect(activeIndex, isImmersive, isUserBrowsing) {
-        if (!isUserBrowsing && activeIndex >= 0 && activeIndex < document.lines.size) {
+    LaunchedEffect(focalListIndex, focalIsMidInterlude, isImmersive, isUserBrowsing) {
+        if (!isUserBrowsing && focalListIndex >= 0 && focalListIndex <= document.lines.size) {
+            // Brief frame settle when expanding a mid-interlude so item height includes the dots
+            if (focalIsMidInterlude) delay(60L)
             val layoutInfo = listState.layoutInfo
             val viewportHeight = (layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset).coerceAtLeast(1)
             val targetAnchorOffset = (viewportHeight * if (isImmersive) 0.30f else 0.25f).toInt()
-            val visibleItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == activeIndex }
+            val visibleItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == focalListIndex }
 
             if (visibleItem != null) {
-                val scrollDelta = (visibleItem.offset - targetAnchorOffset).toFloat()
+                val itemFocalY = if (focalIsMidInterlude) {
+                    visibleItem.offset + (visibleItem.size * 0.58f).toInt()
+                } else {
+                    visibleItem.offset
+                }
+                val scrollDelta = (itemFocalY - targetAnchorOffset).toFloat()
                 if (abs(scrollDelta) > 1.5f) {
                     listState.animateScrollBy(
                         value = scrollDelta,
@@ -200,7 +227,7 @@ fun LyricStageView(
                 }
             } else {
                 listState.animateScrollToItem(
-                    index = activeIndex,
+                    index = focalListIndex,
                     scrollOffset = -targetAnchorOffset
                 )
             }
@@ -598,32 +625,74 @@ fun LyricStageView(
                     verticalArrangement = Arrangement.spacedBy(if (isImmersive) 28.dp else 22.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    itemsIndexed(document.lines, key = { idx, line -> "${idx}_${line.startMs}" }) { index, line ->
-                        val isActive = index == activeIndex
-                        val distance = if (activeIndex >= 0) abs(index - activeIndex) else 0
-                        LyricLineRow(
-                            line = line,
-                            lineIndex = index,
-                            activeIndex = activeIndex,
-                            stepDirection = stepDirection,
-                            isActive = isActive,
-                            distanceFromActive = distance,
-                            effectivePosMs = effectivePosMs,
-                            fontScale = settings.fontScale,
-                            fontWeightValue = settings.fontWeight,
-                            showTranslation = settings.showTranslation,
-                            enableProgressiveBlur = settings.enableLyricBlur && !isUserBrowsing,
-                            isUserBrowsing = isUserBrowsing,
+                    // Dynamic Instrumental Intro Slot (visible ONLY while playing before first synced lyric)
+                    item(key = "intro_interlude_slot") {
+                        val isIntroActive = activeInterlude != null && activeInterlude.afterLineIndex == -1
+                        InstrumentalBreathingDots(
+                            visible = isIntroActive,
+                            interludeProgress = if (isIntroActive) activeInterlude!!.progressAt(effectivePosMs) else 0f,
+                            isPlaying = isPlaying,
                             darkTheme = darkTheme,
-                            enableWordAnimation = line.words.isNotEmpty() &&
-                                (line.isWordSyncedNative || settings.enableSimulatedWordByWord),
-                            onClick = {
-                                if (document.hasSyncedTimestamps) {
-                                    isUserBrowsing = false
-                                    onSeekTo((line.startMs - document.globalOffsetMs).coerceAtLeast(0L))
+                            slotTag = "intro"
+                        )
+                    }
+
+                    itemsIndexed(document.lines, key = { idx, line -> "${idx}_${line.startMs}" }) { index, line ->
+                        val isActive = index == effectiveActiveLineIndex
+                        val distance = when {
+                            activeInterlude != null -> {
+                                val afterIdx = activeInterlude.afterLineIndex
+                                if (afterIdx < 0) {
+                                    index + 1
+                                } else if (index <= afterIdx) {
+                                    (afterIdx - index) + 1
+                                } else {
+                                    index - afterIdx
                                 }
                             }
-                        )
+                            effectiveActiveLineIndex >= 0 -> abs(index - effectiveActiveLineIndex)
+                            else -> 0
+                        }
+                        val isFollowingInterludeActive = activeInterlude != null && activeInterlude.afterLineIndex == index
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            LyricLineRow(
+                                line = line,
+                                lineIndex = index,
+                                activeIndex = effectiveActiveLineIndex,
+                                stepDirection = stepDirection,
+                                isActive = isActive,
+                                distanceFromActive = distance,
+                                effectivePosMs = effectivePosMs,
+                                fontScale = settings.fontScale,
+                                fontWeightValue = settings.fontWeight,
+                                showTranslation = settings.showTranslation,
+                                enableProgressiveBlur = settings.enableLyricBlur && !isUserBrowsing,
+                                isUserBrowsing = isUserBrowsing,
+                                darkTheme = darkTheme,
+                                enableWordAnimation = line.words.isNotEmpty() &&
+                                    (line.isWordSyncedNative || settings.enableSimulatedWordByWord),
+                                onClick = {
+                                    if (document.hasSyncedTimestamps) {
+                                        isUserBrowsing = false
+                                        onSeekTo((line.startMs - document.globalOffsetMs).coerceAtLeast(0L))
+                                    }
+                                }
+                            )
+
+                            // Dynamic Interlude Slot (expands ONLY when playback reaches this instrumental gap)
+                            InstrumentalBreathingDots(
+                                visible = isFollowingInterludeActive,
+                                interludeProgress = if (isFollowingInterludeActive) {
+                                    activeInterlude!!.progressAt(effectivePosMs)
+                                } else {
+                                    0f
+                                },
+                                isPlaying = isPlaying,
+                                darkTheme = darkTheme,
+                                slotTag = "after_$index"
+                            )
+                        }
                     }
                 }
             }

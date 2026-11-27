@@ -303,18 +303,25 @@ object LyricParser {
 
     private fun parseStandardLrc(text: String, sourceLabel: String, offsetMs: Long): LyricDocument {
         val entries = mutableListOf<Pair<Long, String>>()
+        val blankMarkers = mutableListOf<Long>()
         for (rawLine in text.lineSequence()) {
             val trimmed = rawLine.trim()
             val matches = LRC_TIME_REGEX.findAll(trimmed).toList()
             if (matches.isEmpty()) continue
             val lyricText = trimmed.substring(matches.last().range.last + 1).trim()
-            if (lyricText.isBlank()) continue
+            if (lyricText.isBlank()) {
+                for (m in matches) {
+                    blankMarkers.add(toMillis(m.groupValues[1], m.groupValues[2], m.groupValues[3]))
+                }
+                continue
+            }
             for (m in matches) {
                 val timeMs = toMillis(m.groupValues[1], m.groupValues[2], m.groupValues[3])
                 entries.add(timeMs to lyricText)
             }
         }
         entries.sortBy { it.first }
+        blankMarkers.sort()
 
         // Pair duplicate timestamps automatically as original + bilingual translation
         val merged = mutableListOf<Triple<Long, String, String?>>()
@@ -329,7 +336,14 @@ object LyricParser {
 
         val lines = merged.mapIndexed { idx, (startMs, lineText, translation) ->
             val nextStart = merged.getOrNull(idx + 1)?.first ?: (startMs + 4800L)
-            val endMs = max(startMs + 600L, minOf(nextStart, startMs + 12_000L))
+            val explicitBlankEnd = blankMarkers.firstOrNull { marker ->
+                marker >= startMs + 600L && marker < nextStart
+            }
+            val endMs = if (explicitBlankEnd != null) {
+                explicitBlankEnd
+            } else {
+                max(startMs + 600L, minOf(nextStart, startMs + 12_000L))
+            }
             LyricLine(
                 startMs = startMs,
                 endMs = endMs,

@@ -238,6 +238,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val pendingBurnConfirm by viewModel.pendingBurnConfirm.collectAsStateWithLifecycle()
     val pendingAudioWritePermission by viewModel.pendingAudioWritePermission.collectAsStateWithLifecycle()
     val pendingAudioSaveCopy by viewModel.pendingAudioSaveCopy.collectAsStateWithLifecycle()
+    val pendingSettingsBackupExport by viewModel.pendingSettingsBackupExport.collectAsStateWithLifecycle()
+    val pendingSettingsBackupImport by viewModel.pendingSettingsBackupImport.collectAsStateWithLifecycle()
     val openNowPlayingTrigger by viewModel.openNowPlayingTrigger.collectAsStateWithLifecycle()
     val duplicateGroups by viewModel.duplicateGroups.collectAsStateWithLifecycle()
     val pendingImportConflicts by viewModel.pendingImportConflicts.collectAsStateWithLifecycle()
@@ -394,9 +396,28 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         }
     }
 
+    // SAF Local Settings Backup Exporter & Importer
+    val settingsBackupExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        viewModel.completeExportSettingsBackup(uri)
+    }
+
+    val settingsBackupImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let { viewModel.inspectSettingsBackupFile(it) }
+    }
+
     LaunchedEffect(pendingAudioSaveCopy) {
         pendingAudioSaveCopy?.let { req ->
             audioSaveCopyLauncher.launch(req.suggestedFileName)
+        }
+    }
+
+    LaunchedEffect(pendingSettingsBackupExport) {
+        pendingSettingsBackupExport?.let { req ->
+            settingsBackupExportLauncher.launch(req.suggestedFileName)
         }
     }
 
@@ -781,6 +802,13 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onOpenDuplicateManager = { showDuplicateManager = true },
                             onOpenEqualizer = { showEqualizer = true },
                             onOpenAiStudio = ::openAiWorkspace,
+                            onExportSettingsBackup = viewModel::requestExportSettingsBackup,
+                            onImportSettingsBackup = {
+                                settingsBackupImportLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            },
+                            pendingBackupImport = pendingSettingsBackupImport,
+                            onConfirmImportSettingsBackup = viewModel::confirmImportSettingsBackup,
+                            onDismissImportSettingsBackup = viewModel::dismissImportSettingsBackup,
                             contentBottomPadding = scrollableTabBottomPadding
                         )
                     }

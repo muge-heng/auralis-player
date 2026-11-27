@@ -14,7 +14,9 @@ import com.example.data.ai.AiApiException
 import com.example.data.ai.AiTaskType
 import com.example.data.ai.DeepSeekChatClient
 import com.example.data.local.AuralisDatabase
+import com.example.data.local.ParsedSettingsBackup
 import com.example.data.local.PreferencesRepository
+import com.example.data.local.SettingsBackupCodec
 import com.example.data.lyrics.AudioLyricsTagWriter
 import com.example.data.lyrics.AudioTagWriteOutcome
 import com.example.data.lyrics.LyricParser
@@ -122,6 +124,16 @@ data class PendingAudioSaveCopyRequest(
     val suggestedFileName: String,
     val mimeType: String,
     val patchedBytes: ByteArray
+)
+
+data class PendingSettingsBackupExportRequest(
+    val suggestedFileName: String,
+    val includeApiKey: Boolean
+)
+
+data class PendingSettingsBackupImportPreview(
+    val fileName: String,
+    val parsed: ParsedSettingsBackup
 )
 
 class AuralisViewModel(application: Application) : AndroidViewModel(application) {
@@ -376,6 +388,12 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     private val _pendingAudioSaveCopy = MutableStateFlow<PendingAudioSaveCopyRequest?>(null)
     val pendingAudioSaveCopy: StateFlow<PendingAudioSaveCopyRequest?> = _pendingAudioSaveCopy.asStateFlow()
+
+    private val _pendingSettingsBackupExport = MutableStateFlow<PendingSettingsBackupExportRequest?>(null)
+    val pendingSettingsBackupExport: StateFlow<PendingSettingsBackupExportRequest?> = _pendingSettingsBackupExport.asStateFlow()
+
+    private val _pendingSettingsBackupImport = MutableStateFlow<PendingSettingsBackupImportPreview?>(null)
+    val pendingSettingsBackupImport: StateFlow<PendingSettingsBackupImportPreview?> = _pendingSettingsBackupImport.asStateFlow()
 
     private val _openNowPlayingTrigger = MutableStateFlow(false)
     val openNowPlayingTrigger: StateFlow<Boolean> = _openNowPlayingTrigger.asStateFlow()
@@ -2697,6 +2715,112 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 showToast = true
             )
         }
+    }
+
+    // ── Local Settings Backup Export & Import ──
+
+    fun requestExportSettingsBackup(includeApiKey: Boolean) {
+        haptics.tickLight()
+        _pendingSettingsBackupExport.value = PendingSettingsBackupExportRequest(
+            suggestedFileName = SettingsBackupCodec.suggestFileName(),
+            includeApiKey = includeApiKey
+        )
+    }
+
+    fun completeExportSettingsBackup(targetUri: Uri?) {
+        val req = _pendingSettingsBackupExport.value ?: return
+        _pendingSettingsBackupExport.value = null
+        if (targetUri == null) return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val snapshot = prefs.exportSettingsSnapshot()
+                    val json = SettingsBackupCodec.encode(
+                        snapshot = snapshot,
+                        includeApiKey = req.includeApiKey
+                    )
+                    context.contentResolver.openOutputStream(targetUri, "wt")?.use { out ->
+                        out.write(json.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    } ?: error("无法写入目标备份文件")
+                }
+            }
+            result.fold(
+                onSuccess = {
+                    haptics.harmonicChime()
+                    val suffix = if (req.includeApiKey) "（含 AI 密钥）" else "（已脱敏）"
+                    showBanner("设置备份已导出$suffix", StatusToastLevel.SUCCESS)
+                },
+                onFailure = { err ->
+                    showBanner("导出设置备份失败：${err.localizedMessage ?: "写入被拒绝"}", StatusToastLevel.ERROR)
+                }
+            )
+        }
+    }
+
+    fun inspectSettingsBackupFile(sourceUri: Uri) {
+        haptics.tickLight()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val fileName = resolveDisplayName(sourceUri) ?: "auralis_settings.json"
+                    val rawText = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        input.bufferedReader(Charsets.UTF_8).readText()
+                    } ?: error("无法读取选中的备份文件")
+                    val parsed = SettingsBackupCodec.decode(rawText).getOrThrow()
+                    fileName to parsed
+                }
+            }
+            result.fold(
+                onSuccess = { (fileName, parsed) ->
+                    _pendingSettingsBackupImport.value = PendingSettingsBackupImportPreview(
+                        fileName = fileName,
+                        parsed = parsed
+                    )
+                },
+                onFailure = { err ->
+                    showBanner(
+                        "备份文件无效：${err.localizedMessage ?: "JSON 格式解析失败"}",
+                        StatusToastLevel.ERROR
+                    )
+                }
+            )
+        }
+    }
+
+    fun confirmImportSettingsBackup(restoreApiKey: Boolean) {
+        val pending = _pendingSettingsBackupImport.value ?: return
+        _pendingSettingsBackupImport.value = null
+        viewModelScope.launch {
+            runCatching {
+                prefs.importSettingsSnapshot(
+                    snapshot = pending.parsed.snapshot,
+                    restoreApiKey = restoreApiKey
+                )
+                haptics.profile = pending.parsed.snapshot.hapticProfile
+                AcousticDspEngine.applyState(pending.parsed.snapshot.eqState)
+            }.fold(
+                onSuccess = {
+                    haptics.harmonicChime()
+                    showBanner("已成功恢复本地设置备份", StatusToastLevel.SUCCESS)
+                },
+                onFailure = { err ->
+                    showBanner("导入恢复失败：${err.localizedMessage ?: "未知错误"}", StatusToastLevel.ERROR)
+                }
+            )
+        }
+    }
+
+    fun dismissImportSettingsBackup() {
+        _pendingSettingsBackupImport.value = null
+    }
+
+    private fun resolveDisplayName(uri: Uri): String? {
+        return runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
     }
 
     override fun onCleared() {
