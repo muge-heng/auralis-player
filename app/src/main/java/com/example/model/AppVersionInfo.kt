@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "1.0.0"
-    const val PREVIOUS_VERSION = "0.9.9"
+    const val CURRENT_VERSION = "1.0.1"
+    const val PREVIOUS_VERSION = "1.0.0"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -48,6 +48,17 @@ object AppVersionInfo {
     )
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
+        AppReleaseNote(
+            version = "1.0.1",
+            tag = "当前版本",
+            title = "禁止未经确认的自动扫描 · 时长双界线筛选 · 扫描弹窗直达详细设置 · 国产安卓默认音频打开方式重构",
+            highlights = listOf(
+                "彻底移除首次引导完成或授权后的自动全盘扫描逻辑：应用绝不在用户尚未配置筛选规则前私自触发扫描，始终由你在确认扫描规则后主动发起。",
+                "扫描筛选引擎升级为「曲目时长上下双界线」：下限（不限至 3 分钟）与上限（4 分钟至 20 分钟 / 不限）采用完全统一的 9 档刻度滑块，轻松过滤短铃声与超长录音、课程及播客，并完整支持本地配置备份与恢复。",
+                "「智能扫描」确认弹窗新增「前往详细设置（曲库与扫描）」直达入口：点击后同步保存弹窗内改动并一键跳转至「工坊 → 曲库与扫描」精细调节时长上下限、最小体积与屏蔽目录。",
+                "全面重构引导页与工坊设置中的「默认音频播放器」配置方案：彻底移除错误的网页链接默认打开页与功能残缺的原生 6 项默认应用页，改为支持直接唤起系统「音频打开方式（始终使用 Auralis）」选择器、实时检测当前接管播放器并支持跳转清除默认，同时适配 ColorOS / 澎湃OS / 鸿蒙 / MagicOS / OriginOS 等国产系统真实「应用」设置入口与专属路径指引。"
+            )
+        ),
         AppReleaseNote(
             version = "1.0.0",
             tag = "正式发布版",

@@ -81,10 +81,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -109,12 +113,16 @@ import com.example.model.LyricSettings
 import com.example.model.LyricSource
 import com.example.model.NavBarStyle
 import com.example.model.ScanFilterConfig
+import com.example.model.formatDurationBoundSeconds
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScale
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
 import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.adaptiveLyricSourceColor
+import com.example.util.AudioDefaultStatus
+import com.example.util.DefaultAudioPlayerHelper
+import com.example.util.DefaultPickerLaunchResult
 import com.example.viewmodel.PendingSettingsBackupImportPreview
 import java.util.Locale
 import kotlin.math.abs
@@ -151,47 +159,195 @@ enum class SettingsSection(
 }
 
 /**
- * Opens Android's system "Default Apps" screen directly (API 24+),
- * instead of falling into the generic App Info page.
+ * Shared Chinese-Android-aware guide dialog for setting Auralis as the system default audio player.
+ * Avoids Google's stripped 6-role screen and web App Links, providing direct system audio chooser,
+ * rival-player clear-default jump, and OEM "应用" settings with brand-specific path hints.
  */
-fun openSystemDefaultAppsSettings(context: Context): Boolean {
-    val candidates = buildList {
-        add(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            add(
-                Intent(
-                    Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS,
-                    Uri.fromParts("package", context.packageName, null)
-                )
-            )
-        }
-        add(Intent(Settings.ACTION_SETTINGS))
-    }
-    for (intent in candidates) {
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (runCatching { context.startActivity(intent) }.isSuccess) {
-            return true
-        }
-    }
-    return false
-}
+@Composable
+fun DefaultAudioPlayerGuideDialog(
+    status: AudioDefaultStatus,
+    onDismiss: () -> Unit,
+    onActionFeedback: (String) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val romGuide = remember { DefaultAudioPlayerHelper.detectDeviceRomGuide() }
 
-/**
- * On Android 12+ (API 31+), jumps directly to this app's "Open by default" screen.
- */
-fun openAppOpenByDefaultSettings(context: Context): Boolean {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        val directIntent = Intent(
-            Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS,
-            Uri.fromParts("package", context.packageName, null)
-        ).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Rounded.Smartphone,
+                contentDescription = null,
+                tint = if (status is AudioDefaultStatus.AlreadyAuralis) EmeraldLossless else RubyAccent
+            )
+        },
+        title = {
+            Text(
+                text = "设为默认音频播放器",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Live current-default status banner
+                val (statusTitle, statusDesc, statusColor) = when (status) {
+                    AudioDefaultStatus.AlreadyAuralis -> Triple(
+                        "Auralis 已是默认音频打开方式",
+                        "你在文件管理器或其他应用中点击本地音频时，将优先使用 Auralis 播放。",
+                        EmeraldLossless
+                    )
+                    AudioDefaultStatus.NoDefaultLocked -> Triple(
+                        "当前未锁定默认音频播放器",
+                        "点击下方「唤起系统音频打开方式」，在弹窗中选择 Auralis 并点选「始终」即可一键完成。",
+                        adaptiveGoldColor()
+                    )
+                    is AudioDefaultStatus.LockedByOther -> Triple(
+                        "当前由「${status.appLabel}」接管默认播放",
+                        "由于系统已将音频默认绑定到「${status.appLabel}」，建议先前往其应用详情清除默认设置，再唤起系统选择 Auralis。",
+                        RubyAccent
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(statusColor.copy(alpha = 0.11f))
+                        .border(0.75.dp, statusColor.copy(alpha = 0.36f), RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = statusTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor
+                    )
+                    Text(
+                        text = statusDesc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Primary context-aware action button
+                when (status) {
+                    AudioDefaultStatus.NoDefaultLocked -> {
+                        Button(
+                            onClick = {
+                                when (val res = DefaultAudioPlayerHelper.launchSystemAudioDefaultPicker(context)) {
+                                    DefaultPickerLaunchResult.LaunchedSystemPicker -> {
+                                        onActionFeedback("请在弹窗中选择 Auralis 并点选「始终」")
+                                        onDismiss()
+                                    }
+                                    DefaultPickerLaunchResult.AlreadyDefault -> {
+                                        onActionFeedback("Auralis 已是系统默认音频播放器")
+                                        onDismiss()
+                                    }
+                                    is DefaultPickerLaunchResult.BlockedByExistingDefault -> {
+                                        onActionFeedback("当前默认播放器为「${res.appLabel}」，请先清除其默认设置")
+                                    }
+                                    DefaultPickerLaunchResult.LaunchFailed -> {
+                                        onActionFeedback("系统未响应选择器，请通过下方「应用」设置手动指派")
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = RubyAccent,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("default_player_dialog_launch_picker")
+                        ) {
+                            Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("唤起系统音频打开方式（推荐）")
+                        }
+                    }
+                    is AudioDefaultStatus.LockedByOther -> {
+                        Button(
+                            onClick = {
+                                DefaultAudioPlayerHelper.openAppDetailsSettings(context, status.packageName)
+                                onActionFeedback("请在「${status.appLabel}」详情中点选默认打开 → 清除默认设置")
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = RubyAccent,
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("default_player_dialog_clear_rival")
+                        ) {
+                            Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("打开「${status.appLabel}」详情以清除默认")
+                        }
+                    }
+                    AudioDefaultStatus.AlreadyAuralis -> {
+                        OutlinedButton(
+                            onClick = {
+                                DefaultAudioPlayerHelper.openAppDetailsSettings(context)
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("default_player_dialog_auralis_details")
+                        ) {
+                            Text("查看 Auralis 应用详情")
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        DefaultAudioPlayerHelper.openOemAppManagementSettings(context)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("default_player_dialog_oem_apps")
+                ) {
+                    Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("打开系统「应用」设置")
+                }
+
+                // Vendor-specific Chinese Android path guide
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+                        .padding(horizontal = 11.dp, vertical = 9.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "${romGuide.romDisplayName} 设置参考路径",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = romGuide.settingsPathHint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("default_player_dialog_close")
+            ) {
+                Text("知道了")
+            }
         }
-        if (runCatching { context.startActivity(directIntent) }.isSuccess) {
-            return true
-        }
-    }
-    return openSystemDefaultAppsSettings(context)
+    )
 }
 
 @Composable
@@ -1275,20 +1431,92 @@ internal fun LibraryAndScanSettingsSubPage(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val filterGold = adaptiveGoldColor()
+                    val normFilter = scanFilter.normalized()
+
+                    // Active duration bounds summary header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "曲目时长筛选范围（上下界线）",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = normFilter.formatDurationRangeLabel(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = filterGold
+                        )
+                    }
+
+                    // Unified 9-stop stepped sliders for both lower and upper duration bounds
+                    val minDurationStops = listOf(0, 15, 30, 45, 60, 90, 120, 150, 180)
+                    val currentMinStopIdx = minDurationStops.indices.minByOrNull { idx ->
+                        abs(minDurationStops[idx] - normFilter.minDurationSec)
+                    } ?: 2
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("最短曲目时长过滤", style = MaterialTheme.typography.bodyMedium)
-                        Text("${scanFilter.minDurationSec} 秒", style = MaterialTheme.typography.labelMedium, color = filterGold)
+                        Text("最短时长下限（过滤短语音/铃声）", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = if (normFilter.minDurationSec <= 0) "不限" else formatDurationBoundSeconds(normFilter.minDurationSec),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = filterGold
+                        )
                     }
                     Slider(
-                        value = scanFilter.minDurationSec.toFloat(),
-                        onValueChange = {
-                            onUpdateScanFilter(scanFilter.copy(minDurationSec = it.toInt()))
+                        value = currentMinStopIdx.toFloat(),
+                        onValueChange = { raw ->
+                            val idx = raw.roundToInt().coerceIn(0, minDurationStops.lastIndex)
+                            val newMin = minDurationStops[idx]
+                            onUpdateScanFilter(normFilter.copy(minDurationSec = newMin).normalized())
                         },
-                        valueRange = 0f..120f,
-                        steps = 7
+                        valueRange = 0f..minDurationStops.lastIndex.toFloat(),
+                        steps = minDurationStops.size - 2,
+                        modifier = Modifier.testTag("settings_scan_min_duration_slider")
+                    )
+
+                    // Upper bound: identical 9-stop stepped slider (4 min .. 20 min, rightmost stop = 不限)
+                    val maxDurationStops = listOf(240, 300, 360, 480, 600, 720, 900, 1200, 0)
+                    val currentMaxStopIdx = if (normFilter.maxDurationSec <= 0) {
+                        maxDurationStops.lastIndex
+                    } else {
+                        (0 until maxDurationStops.lastIndex).minByOrNull { idx ->
+                            abs(maxDurationStops[idx] - normFilter.maxDurationSec)
+                        } ?: maxDurationStops.lastIndex
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("最长时长上限（过滤长录音/播客）", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = if (normFilter.maxDurationSec <= 0) "不限" else formatDurationBoundSeconds(normFilter.maxDurationSec),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = filterGold
+                        )
+                    }
+                    Slider(
+                        value = currentMaxStopIdx.toFloat(),
+                        onValueChange = { raw ->
+                            val idx = raw.roundToInt().coerceIn(0, maxDurationStops.lastIndex)
+                            val newMax = maxDurationStops[idx]
+                            onUpdateScanFilter(normFilter.copy(maxDurationSec = newMax).normalized())
+                        },
+                        valueRange = 0f..maxDurationStops.lastIndex.toFloat(),
+                        steps = maxDurationStops.size - 2,
+                        modifier = Modifier.testTag("settings_scan_max_duration_slider")
                     )
 
                     Row(
@@ -1672,48 +1900,142 @@ internal fun BackupAndSystemSettingsSubPage(
             }
         }
 
-        // System Default Music Player Card (Fixed Direct Deep Links!)
+        // System Default Music Player Card (Chinese-Android-aware, no broken App Links / Google 6-role screen)
         item {
+            var audioDefaultStatus by remember {
+                mutableStateOf(DefaultAudioPlayerHelper.inspectCurrentAudioDefault(context))
+            }
+            var showDefaultGuideDialog by remember { mutableStateOf(false) }
+            val romGuide = remember { DefaultAudioPlayerHelper.detectDeviceRomGuide() }
+            val lifecycleOwner = LocalLifecycleOwner.current
+
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        audioDefaultStatus = DefaultAudioPlayerHelper.inspectCurrentAudioDefault(context)
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+
+            if (showDefaultGuideDialog) {
+                DefaultAudioPlayerGuideDialog(
+                    status = audioDefaultStatus,
+                    onDismiss = {
+                        showDefaultGuideDialog = false
+                        audioDefaultStatus = DefaultAudioPlayerHelper.inspectCurrentAudioDefault(context)
+                    }
+                )
+            }
+
             SettingsCard(
                 icon = Icons.Rounded.Smartphone,
-                title = "系统默认音乐播放器",
-                subtitle = "Auralis 已注册 audio/* 与系统音乐主入口，可直接跳转系统「默认应用」页进行指派"
+                title = "系统默认音频播放器",
+                subtitle = "适配国产安卓系统的真实默认音频设置，避免跳入仅限网页链接或缺少音乐项的原生页面"
             ) {
+                val (statusLabel, statusTint) = when (val st = audioDefaultStatus) {
+                    AudioDefaultStatus.AlreadyAuralis -> "当前状态：Auralis 已是系统默认音频播放器" to EmeraldLossless
+                    AudioDefaultStatus.NoDefaultLocked -> "当前状态：未锁定默认音频播放器，可直接唤起选择" to adaptiveGoldColor()
+                    is AudioDefaultStatus.LockedByOther -> "当前默认播放器：${st.appLabel}（需清除默认后切换）" to RubyAccent
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(statusTint.copy(alpha = 0.11f))
+                        .border(0.65.dp, statusTint.copy(alpha = 0.34f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (audioDefaultStatus is AudioDefaultStatus.AlreadyAuralis) {
+                            Icons.Rounded.CheckCircle
+                        } else {
+                            Icons.Rounded.Smartphone
+                        },
+                        contentDescription = null,
+                        tint = statusTint,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = statusLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = statusTint
+                    )
+                }
+
                 Button(
-                    onClick = { openSystemDefaultAppsSettings(context) },
+                    onClick = {
+                        when (val res = DefaultAudioPlayerHelper.launchSystemAudioDefaultPicker(context)) {
+                            DefaultPickerLaunchResult.LaunchedSystemPicker -> Unit
+                            DefaultPickerLaunchResult.AlreadyDefault -> {
+                                showDefaultGuideDialog = true
+                            }
+                            is DefaultPickerLaunchResult.BlockedByExistingDefault -> {
+                                audioDefaultStatus = AudioDefaultStatus.LockedByOther(res.packageName, res.appLabel)
+                                showDefaultGuideDialog = true
+                            }
+                            DefaultPickerLaunchResult.LaunchFailed -> {
+                                showDefaultGuideDialog = true
+                            }
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        contentColor = MaterialTheme.colorScheme.onSurface
+                        containerColor = RubyAccent,
+                        contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("settings_open_default_apps_button")
+                        .testTag("settings_open_audio_chooser_button")
                 ) {
                     Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("打开系统「默认应用」设置")
+                    Text(
+                        when (val st = audioDefaultStatus) {
+                            AudioDefaultStatus.AlreadyAuralis -> "查看默认音频配置说明"
+                            AudioDefaultStatus.NoDefaultLocked -> "唤起系统「音频打开方式」（选 Auralis 始终）"
+                            is AudioDefaultStatus.LockedByOther -> "更换默认播放器（当前：${st.appLabel}）"
+                        }
+                    )
                 }
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    OutlinedButton(
-                        onClick = { openAppOpenByDefaultSettings(context) },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_open_app_by_default_button")
-                    ) {
-                        Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("配置 Auralis「默认打开」关联")
-                    }
+                OutlinedButton(
+                    onClick = { DefaultAudioPlayerHelper.openOemAppManagementSettings(context) },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_open_oem_apps_button")
+                ) {
+                    Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("打开系统「应用」设置（国产默认应用入口）")
                 }
 
-                Text(
-                    text = "提示：部分定制系统不支持在「默认应用」中单独列出音乐项，你也可在文件管理器中点击任意本地音频，选择 Auralis 并点选「始终」。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f))
+                        .padding(horizontal = 11.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "${romGuide.romDisplayName} 参考路径",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = romGuide.settingsPathHint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 

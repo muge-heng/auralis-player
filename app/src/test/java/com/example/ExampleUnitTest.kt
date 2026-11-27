@@ -507,21 +507,22 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 11)
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 12)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[11].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -901,10 +902,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v1.0.0 is active
+        // Liquid Glass is the default nav bar & v1.0.1 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -929,6 +930,7 @@ class ExampleUnitTest {
             deletionGuardMode = com.example.model.DeletionGuardMode.TOP_UNDO_BANNER,
             scanFilter = com.example.model.ScanFilterConfig(
                 minDurationSec = 45,
+                maxDurationSec = 900,
                 minSizeKb = 750,
                 excludedFolders = setOf("WeChat", "Recordings")
             ),
@@ -988,6 +990,7 @@ class ExampleUnitTest {
         assertEquals(com.example.model.NavBarStyle.CLASSIC, decodedSanitized.snapshot.navBarStyle)
         assertEquals(com.example.model.DeletionGuardMode.TOP_UNDO_BANNER, decodedSanitized.snapshot.deletionGuardMode)
         assertEquals(45, decodedSanitized.snapshot.scanFilter.minDurationSec)
+        assertEquals(900, decodedSanitized.snapshot.scanFilter.maxDurationSec)
         assertEquals(800, decodedSanitized.snapshot.lyricSettings.fontWeight)
         assertEquals(1, decodedSanitized.preview.customEqPresetCount)
         assertEquals(1, decodedSanitized.preview.playlistCoverCount)
@@ -1482,6 +1485,43 @@ class ExampleUnitTest {
         assertEquals(k1, k2)
         assertTrue(k1 != kHi)
     }
+
+    @Test
+    fun scanFilterSupportsLowerAndUpperDurationBoundsAndRomGuidesMatchChineseVendors() {
+        val bounded = com.example.model.ScanFilterConfig(
+            minDurationSec = 30,
+            maxDurationSec = 600
+        )
+        assertFalse(bounded.matchesDurationMs(25_000L))
+        assertTrue(bounded.matchesDurationMs(30_000L))
+        assertTrue(bounded.matchesDurationMs(240_000L))
+        assertTrue(bounded.matchesDurationMs(600_000L))
+        assertFalse(bounded.matchesDurationMs(605_000L))
+        assertTrue(bounded.matchesDurationMs(0L))
+        assertEquals("30秒 – 10分钟", bounded.formatDurationRangeLabel())
+        assertEquals("30秒~10分钟", bounded.formatDurationSummaryShort())
+
+        // Unlimited upper bound (0) accepts long tracks
+        val openUpper = com.example.model.ScanFilterConfig(minDurationSec = 45, maxDurationSec = 0)
+        assertFalse(openUpper.matchesDurationMs(40_000L))
+        assertTrue(openUpper.matchesDurationMs(3_600_000L))
+        assertEquals("≥45秒", openUpper.formatDurationSummaryShort())
+
+        // Normalization enforces maxDurationSec >= minDurationSec + 15 when enabled
+        val inverted = com.example.model.ScanFilterConfig(minDurationSec = 120, maxDurationSec = 90).normalized()
+        assertTrue(inverted.maxDurationSec >= inverted.minDurationSec + 15)
+
+        // Chinese ROM default audio player guides accurately map major OEM brands
+        val colorOs = com.example.util.DefaultAudioPlayerHelper.detectDeviceRomGuide("OnePlus", "OnePlus")
+        assertTrue(colorOs.romDisplayName.contains("ColorOS"))
+        val hyperOs = com.example.util.DefaultAudioPlayerHelper.detectDeviceRomGuide("Xiaomi", "Redmi")
+        assertTrue(hyperOs.romDisplayName.contains("澎湃OS"))
+        val harmony = com.example.util.DefaultAudioPlayerHelper.detectDeviceRomGuide("HUAWEI", "HUAWEI")
+        assertTrue(harmony.romDisplayName.contains("鸿蒙"))
+        val originOs = com.example.util.DefaultAudioPlayerHelper.detectDeviceRomGuide("vivo", "iQOO")
+        assertTrue(originOs.romDisplayName.contains("OriginOS"))
+    }
 }
+
 
 

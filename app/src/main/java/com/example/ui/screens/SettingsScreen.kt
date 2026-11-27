@@ -340,7 +340,7 @@ private fun SettingsHubContent(
         else if (lyricSettings.enableLyricBlur) append(" · 景深模糊")
     }
     val librarySummary =
-        "≥${scanFilter.minDurationSec}秒 · ≥${scanFilter.minSizeKb}KB · ${scanFilter.excludedFolders.size} 个屏蔽目录"
+        "${scanFilter.formatDurationSummaryShort()} · ≥${scanFilter.minSizeKb}KB · ${scanFilter.excludedFolders.size} 个屏蔽目录"
     val backupSystemSummary =
         "${deletionGuardMode.shortLabel} · 备份恢复 · 数据清理"
 

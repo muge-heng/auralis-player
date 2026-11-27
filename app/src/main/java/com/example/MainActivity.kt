@@ -120,11 +120,11 @@ import com.example.ui.screens.NowPlayingStage
 import com.example.ui.screens.PlaylistsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SettingsSection
-import com.example.ui.screens.openAppOpenByDefaultSettings
 import com.example.ui.screens.shouldCollapseNowPlayingSheet
 import com.example.ui.theme.AuralisTheme
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RubyAccent
+import com.example.util.DefaultAudioPlayerHelper
 import com.example.viewmodel.AuralisViewModel
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -193,7 +193,11 @@ class MainActivity : ComponentActivity() {
         if (intent?.action == Intent.ACTION_VIEW) {
             val uri: Uri? = intent.data
             if (uri != null) {
-                viewModel.handleExternalAudioIntent(uri)
+                if (DefaultAudioPlayerHelper.isDefaultAudioProbeUri(uri)) {
+                    viewModel.showBanner("已通过系统打开方式选择 Auralis 播放音频")
+                } else {
+                    viewModel.handleExternalAudioIntent(uri)
+                }
             }
         }
     }
@@ -341,8 +345,6 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         if (granted) {
             if (configToUse != null) {
                 viewModel.scanDeviceLibraryWithConfig(configToUse)
-            } else {
-                viewModel.scanDeviceLibrary()
             }
         } else {
             viewModel.showBanner("未授予本地音频权限，你仍可通过「导入单曲」或「文件夹」零权限播放")
@@ -369,6 +371,9 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
 
     var onboardingAudioGranted by remember { mutableStateOf(checkAudioPermissionGranted()) }
     var onboardingNotificationGranted by remember { mutableStateOf(checkNotificationPermissionGranted()) }
+    var onboardingAudioDefaultStatus by remember {
+        mutableStateOf(DefaultAudioPlayerHelper.inspectCurrentAudioDefault(context))
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, audioPermission) {
@@ -376,6 +381,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
             if (event == Lifecycle.Event.ON_RESUME) {
                 onboardingAudioGranted = checkAudioPermissionGranted()
                 onboardingNotificationGranted = checkNotificationPermissionGranted()
+                onboardingAudioDefaultStatus = DefaultAudioPlayerHelper.inspectCurrentAudioDefault(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -387,7 +393,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     ) { granted ->
         onboardingAudioGranted = granted || checkAudioPermissionGranted()
         if (onboardingAudioGranted) {
-            viewModel.showBanner("已授予本地音频访问权限，进入应用后将自动扫描曲库")
+            viewModel.showBanner("已授予本地音频权限，进入后可在曲库中先配置筛选规则再手动扫描")
         }
     }
 
@@ -1208,6 +1214,16 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     showSmartScanDialog = false
                     executeSmartScanWithConfig(confirmedConfig)
                 },
+                onOpenDetailedSettings = { editedConfig ->
+                    viewModel.updateScanFilter(editedConfig)
+                    showSmartScanDialog = false
+                    viewModel.haptics.tickLight()
+                    if (playerExpansion.value > 0.05f) {
+                        collapseNowPlaying()
+                    }
+                    currentTab = MainDestination.SETTINGS
+                    activeSettingsSection = SettingsSection.LIBRARY_SCAN
+                },
                 onDismiss = { showSmartScanDialog = false }
             )
         }
@@ -1297,6 +1313,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
             AuralisOnboardingScreen(
                 audioPermissionGranted = onboardingAudioGranted,
                 notificationPermissionGranted = onboardingNotificationGranted,
+                audioDefaultStatus = onboardingAudioDefaultStatus,
                 onRequestAudioPermission = {
                     viewModel.haptics.tickLight()
                     if (!onboardingAudioGranted) {
@@ -1320,17 +1337,11 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                         }
                     }
                 },
-                onOpenDefaultPlayerSettings = {
-                    viewModel.haptics.tickLight()
-                    openAppOpenByDefaultSettings(context)
-                },
-                onFinishOnboarding = { triggerScanIfGranted ->
+                onDefaultPlayerFeedback = viewModel::showBanner,
+                onFinishOnboarding = {
                     viewModel.haptics.springImpact()
                     viewModel.completeOnboarding()
                     showWelcomeAnimation = true
-                    if (triggerScanIfGranted && onboardingAudioGranted) {
-                        viewModel.scanDeviceLibrary()
-                    }
                 }
             )
         }

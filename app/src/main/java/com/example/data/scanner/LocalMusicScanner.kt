@@ -62,17 +62,23 @@ class LocalMusicScanner(
             }
         }.toTypedArray()
 
-        val minDurationMs = filter.minDurationSec * 1000L
-        val minSizeBytes = filter.minSizeKb * 1024L
+        val normalizedFilter = filter.normalized()
+        val minDurationMs = normalizedFilter.minDurationSec * 1000L
+        val maxDurationMs = normalizedFilter.maxDurationSec * 1000L
+        val minSizeBytes = normalizedFilter.minSizeKb * 1024L
 
         val selectionParts = mutableListOf<String>()
         val selectionArgs = mutableListOf<String>()
-        if (filter.excludeSystemAudio) {
+        if (normalizedFilter.excludeSystemAudio) {
             selectionParts.add("${MediaStore.Audio.Media.IS_MUSIC} != 0")
         }
         if (minDurationMs > 0) {
             selectionParts.add("${MediaStore.Audio.Media.DURATION} >= ?")
             selectionArgs.add(minDurationMs.toString())
+        }
+        if (maxDurationMs > 0) {
+            selectionParts.add("${MediaStore.Audio.Media.DURATION} <= ?")
+            selectionArgs.add(maxDurationMs.toString())
         }
         if (minSizeBytes > 0) {
             selectionParts.add("${MediaStore.Audio.Media.SIZE} >= ?")
@@ -317,7 +323,7 @@ class LocalMusicScanner(
                                     onProgress(ScanProgress(true, scanned, tracks.size, name))
                                     val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                                     val track = metadataExtractor.buildTrackFromUri(docUri, name, size, folderName)
-                                    if (track.durationMs >= filter.minDurationSec * 1000L || track.durationMs == 0L) {
+                                    if (filter.matchesDurationMs(track.durationMs)) {
                                         tracks.add(track)
                                     }
                                 }

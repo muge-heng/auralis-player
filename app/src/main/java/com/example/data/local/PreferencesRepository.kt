@@ -58,6 +58,7 @@ class PreferencesRepository(private val context: Context) {
 
         // Smart Scan Filter
         val MIN_DURATION_SEC = intPreferencesKey("scan_min_duration_sec")
+        val MAX_DURATION_SEC = intPreferencesKey("scan_max_duration_sec")
         val MIN_SIZE_KB = intPreferencesKey("scan_min_size_kb")
         val EXCLUDE_SYSTEM_AUDIO = booleanPreferencesKey("scan_exclude_system")
         val SCAN_REQUIRE_METADATA = booleanPreferencesKey("scan_require_metadata")
@@ -166,6 +167,7 @@ class PreferencesRepository(private val context: Context) {
         val default = ScanFilterConfig()
         ScanFilterConfig(
             minDurationSec = prefs[Keys.MIN_DURATION_SEC] ?: default.minDurationSec,
+            maxDurationSec = prefs[Keys.MAX_DURATION_SEC] ?: default.maxDurationSec,
             minSizeKb = prefs[Keys.MIN_SIZE_KB] ?: default.minSizeKb,
             excludeSystemAudio = prefs[Keys.EXCLUDE_SYSTEM_AUDIO] ?: default.excludeSystemAudio,
             requireMetadata = prefs[Keys.SCAN_REQUIRE_METADATA] ?: default.requireMetadata,
@@ -173,7 +175,7 @@ class PreferencesRepository(private val context: Context) {
             requireAlbumOrArt = prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] ?: default.requireAlbumOrArt,
             classifyUnverifiedAsGeneralAudio = prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] ?: default.classifyUnverifiedAsGeneralAudio,
             excludedFolders = prefs[Keys.EXCLUDED_FOLDERS] ?: default.excludedFolders
-        )
+        ).normalized()
     }
 
     val lyricSettingsFlow: Flow<LyricSettings> = context.auralisDataStore.data.map { prefs ->
@@ -346,15 +348,17 @@ class PreferencesRepository(private val context: Context) {
     }
 
     suspend fun updateScanFilter(config: ScanFilterConfig) {
+        val norm = config.normalized()
         context.auralisDataStore.edit { prefs ->
-            prefs[Keys.MIN_DURATION_SEC] = config.minDurationSec
-            prefs[Keys.MIN_SIZE_KB] = config.minSizeKb
-            prefs[Keys.EXCLUDE_SYSTEM_AUDIO] = config.excludeSystemAudio
-            prefs[Keys.SCAN_REQUIRE_METADATA] = config.requireMetadata
-            prefs[Keys.SCAN_REQUIRE_ARTIST] = config.requireArtist
-            prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] = config.requireAlbumOrArt
-            prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] = config.classifyUnverifiedAsGeneralAudio
-            prefs[Keys.EXCLUDED_FOLDERS] = config.excludedFolders
+            prefs[Keys.MIN_DURATION_SEC] = norm.minDurationSec
+            prefs[Keys.MAX_DURATION_SEC] = norm.maxDurationSec
+            prefs[Keys.MIN_SIZE_KB] = norm.minSizeKb
+            prefs[Keys.EXCLUDE_SYSTEM_AUDIO] = norm.excludeSystemAudio
+            prefs[Keys.SCAN_REQUIRE_METADATA] = norm.requireMetadata
+            prefs[Keys.SCAN_REQUIRE_ARTIST] = norm.requireArtist
+            prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] = norm.requireAlbumOrArt
+            prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] = norm.classifyUnverifiedAsGeneralAudio
+            prefs[Keys.EXCLUDED_FOLDERS] = norm.excludedFolders
         }
     }
 
@@ -537,14 +541,16 @@ class PreferencesRepository(private val context: Context) {
             prefs[Keys.DELETION_GUARD_MODE] = snapshot.deletionGuardMode.name
 
             // Scan Filter
-            prefs[Keys.MIN_DURATION_SEC] = snapshot.scanFilter.minDurationSec
-            prefs[Keys.MIN_SIZE_KB] = snapshot.scanFilter.minSizeKb
-            prefs[Keys.EXCLUDE_SYSTEM_AUDIO] = snapshot.scanFilter.excludeSystemAudio
-            prefs[Keys.SCAN_REQUIRE_METADATA] = snapshot.scanFilter.requireMetadata
-            prefs[Keys.SCAN_REQUIRE_ARTIST] = snapshot.scanFilter.requireArtist
-            prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] = snapshot.scanFilter.requireAlbumOrArt
-            prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] = snapshot.scanFilter.classifyUnverifiedAsGeneralAudio
-            prefs[Keys.EXCLUDED_FOLDERS] = snapshot.scanFilter.excludedFolders
+            val normScan = snapshot.scanFilter.normalized()
+            prefs[Keys.MIN_DURATION_SEC] = normScan.minDurationSec
+            prefs[Keys.MAX_DURATION_SEC] = normScan.maxDurationSec
+            prefs[Keys.MIN_SIZE_KB] = normScan.minSizeKb
+            prefs[Keys.EXCLUDE_SYSTEM_AUDIO] = normScan.excludeSystemAudio
+            prefs[Keys.SCAN_REQUIRE_METADATA] = normScan.requireMetadata
+            prefs[Keys.SCAN_REQUIRE_ARTIST] = normScan.requireArtist
+            prefs[Keys.SCAN_REQUIRE_ALBUM_OR_ART] = normScan.requireAlbumOrArt
+            prefs[Keys.SCAN_CLASSIFY_GENERAL_AUDIO] = normScan.classifyUnverifiedAsGeneralAudio
+            prefs[Keys.EXCLUDED_FOLDERS] = normScan.excludedFolders
 
             // Lyrics
             prefs[Keys.SIMULATED_WORD_BY_WORD] = snapshot.lyricSettings.enableSimulatedWordByWord

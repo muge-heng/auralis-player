@@ -74,6 +74,7 @@ enum class NavBarStyle(val label: String, val subtitle: String) {
 
 data class ScanFilterConfig(
     val minDurationSec: Int = 30,
+    val maxDurationSec: Int = 0, // 0 = no upper limit; >0 = max duration in seconds
     val minSizeKb: Int = 500,
     val excludeSystemAudio: Boolean = true,
     val requireMetadata: Boolean = false,
@@ -85,7 +86,66 @@ data class ScanFilterConfig(
         "Alarms", "Ringtones", "CallRecordings", "Sounds"
     ),
     val includedFoldersOnly: Set<String> = emptySet()
-)
+) {
+    fun normalized(): ScanFilterConfig {
+        val cleanMin = minDurationSec.coerceIn(0, 600)
+        val cleanMax = if (maxDurationSec <= 0) {
+            0
+        } else {
+            maxDurationSec.coerceIn(cleanMin + 15, 7200)
+        }
+        return copy(
+            minDurationSec = cleanMin,
+            maxDurationSec = cleanMax,
+            minSizeKb = minSizeKb.coerceIn(0, 10_000)
+        )
+    }
+
+    fun matchesDurationMs(durationMs: Long): Boolean {
+        if (durationMs <= 0L) return true
+        val norm = normalized()
+        val passMin = norm.minDurationSec <= 0 || durationMs >= norm.minDurationSec * 1000L
+        val passMax = norm.maxDurationSec <= 0 || durationMs <= norm.maxDurationSec * 1000L
+        return passMin && passMax
+    }
+
+    fun formatDurationRangeLabel(): String {
+        val norm = normalized()
+        return when {
+            norm.minDurationSec <= 0 && norm.maxDurationSec <= 0 -> "不限时长"
+            norm.minDurationSec > 0 && norm.maxDurationSec <= 0 ->
+                "≥ ${formatDurationBoundSeconds(norm.minDurationSec)}（不限上限）"
+            norm.minDurationSec <= 0 && norm.maxDurationSec > 0 ->
+                "≤ ${formatDurationBoundSeconds(norm.maxDurationSec)}"
+            else ->
+                "${formatDurationBoundSeconds(norm.minDurationSec)} – ${formatDurationBoundSeconds(norm.maxDurationSec)}"
+        }
+    }
+
+    fun formatDurationSummaryShort(): String {
+        val norm = normalized()
+        return when {
+            norm.minDurationSec <= 0 && norm.maxDurationSec <= 0 -> "不限时长"
+            norm.minDurationSec > 0 && norm.maxDurationSec <= 0 ->
+                "≥${formatDurationBoundSeconds(norm.minDurationSec)}"
+            norm.minDurationSec <= 0 && norm.maxDurationSec > 0 ->
+                "≤${formatDurationBoundSeconds(norm.maxDurationSec)}"
+            else ->
+                "${formatDurationBoundSeconds(norm.minDurationSec)}~${formatDurationBoundSeconds(norm.maxDurationSec)}"
+        }
+    }
+}
+
+fun formatDurationBoundSeconds(seconds: Int): String {
+    if (seconds <= 0) return "不限"
+    val mins = seconds / 60
+    val remSec = seconds % 60
+    return when {
+        mins == 0 -> "${remSec}秒"
+        remSec == 0 -> "${mins}分钟"
+        else -> "${mins}分${remSec}秒"
+    }
+}
 
 const val DEFAULT_AI_MAX_OUTPUT_TOKENS = 393_216 // 384K
 

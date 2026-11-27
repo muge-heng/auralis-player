@@ -91,6 +91,7 @@ import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RubyAccent
 import com.example.ui.theme.RubyGlow
+import com.example.util.AudioDefaultStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -360,16 +361,25 @@ private fun DrawScope.drawAuralisMonogram(
 fun AuralisOnboardingScreen(
     audioPermissionGranted: Boolean,
     notificationPermissionGranted: Boolean,
+    audioDefaultStatus: AudioDefaultStatus,
     onRequestAudioPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
-    onOpenDefaultPlayerSettings: () -> Unit,
-    onFinishOnboarding: (triggerScanIfGranted: Boolean) -> Unit,
+    onDefaultPlayerFeedback: (String) -> Unit,
+    onFinishOnboarding: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val totalPages = 4
     val pagerState = rememberPagerState(initialPage = 0, pageCount = { totalPages })
     val scope = rememberCoroutineScope()
-    var defaultAppSettingsVisited by rememberSaveable { mutableStateOf(false) }
+    var showDefaultPlayerDialog by remember { mutableStateOf(false) }
+
+    if (showDefaultPlayerDialog) {
+        DefaultAudioPlayerGuideDialog(
+            status = audioDefaultStatus,
+            onDismiss = { showDefaultPlayerDialog = false },
+            onActionFeedback = onDefaultPlayerFeedback
+        )
+    }
 
     // Page-adaptive ambient aurora mood colors
     val primaryGlow by animateColorAsState(
@@ -522,7 +532,7 @@ fun AuralisOnboardingScreen(
                         .clip(RoundedCornerShape(50))
                         .background(Color.White.copy(alpha = 0.08f))
                         .border(0.6.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(50))
-                        .clickable { onFinishOnboarding(false) }
+                        .clickable { onFinishOnboarding() }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                         .testTag("onboarding_top_skip")
                 ) {
@@ -561,13 +571,10 @@ fun AuralisOnboardingScreen(
                         else -> OnboardingPermissionsHubPage(
                             audioPermissionGranted = audioPermissionGranted,
                             notificationPermissionGranted = notificationPermissionGranted,
-                            defaultAppSettingsVisited = defaultAppSettingsVisited,
+                            audioDefaultStatus = audioDefaultStatus,
                             onRequestAudioPermission = onRequestAudioPermission,
                             onRequestNotificationPermission = onRequestNotificationPermission,
-                            onOpenDefaultPlayerSettings = {
-                                defaultAppSettingsVisited = true
-                                onOpenDefaultPlayerSettings()
-                            }
+                            onOpenDefaultPlayerGuide = { showDefaultPlayerDialog = true }
                         )
                     }
                 }
@@ -609,7 +616,7 @@ fun AuralisOnboardingScreen(
                         if (!isLastPage) {
                             scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                         } else {
-                            onFinishOnboarding(audioPermissionGranted)
+                            onFinishOnboarding()
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
@@ -628,7 +635,7 @@ fun AuralisOnboardingScreen(
                             !isLastPage && pagerState.currentPage == 0 -> "探索逐字歌词舞台"
                             !isLastPage && pagerState.currentPage == 1 -> "了解双路智能过渡"
                             !isLastPage -> "前往权限配置"
-                            audioPermissionGranted -> "进入 Auralis 并扫描曲库"
+                            audioPermissionGranted -> "进入 Auralis"
                             else -> "暂不授权，直接进入"
                         },
                         style = MaterialTheme.typography.titleSmall,
@@ -1181,15 +1188,15 @@ private fun OnboardingDualDeckShowcasePage() {
 private fun OnboardingPermissionsHubPage(
     audioPermissionGranted: Boolean,
     notificationPermissionGranted: Boolean,
-    defaultAppSettingsVisited: Boolean,
+    audioDefaultStatus: AudioDefaultStatus,
     onRequestAudioPermission: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
-    onOpenDefaultPlayerSettings: () -> Unit
+    onOpenDefaultPlayerGuide: () -> Unit
 ) {
     val readyCount = listOf(
         audioPermissionGranted,
         notificationPermissionGranted,
-        defaultAppSettingsVisited
+        audioDefaultStatus is AudioDefaultStatus.AlreadyAuralis
     ).count { it }
 
     Column(
@@ -1260,7 +1267,7 @@ private fun OnboardingPermissionsHubPage(
                 accent = RubyAccent,
                 title = "读取本地音频",
                 tag = "推荐",
-                description = "一键扫描本机无损与 Hi-Res 曲库，解析内嵌封面及歌词，所有文件仅在本地读取。",
+                description = "授权后可随时在曲库中按你的筛选规则手动扫描无损音频，不会自动扫描，文件仅本地读取。",
                 actionLabel = "去授权",
                 grantedLabel = "已授权",
                 isGranted = audioPermissionGranted,
@@ -1281,16 +1288,21 @@ private fun OnboardingPermissionsHubPage(
                 buttonTestTag = "onboarding_perm_notification_btn"
             )
 
+            val isAlreadyDefaultAudio = audioDefaultStatus is AudioDefaultStatus.AlreadyAuralis
             OnboardingPermissionActionCard(
                 icon = Icons.Rounded.OpenInNew,
                 accent = Color(0xFF93B4FF),
                 title = "默认音频播放器",
                 tag = "可选",
-                description = "前往系统默认应用关联设置，在文件管理器中点按音频即可直接用 Auralis 播放。",
+                description = when (audioDefaultStatus) {
+                    AudioDefaultStatus.AlreadyAuralis -> "Auralis 已是系统默认音频播放器，在文件管理器点按音频即可直接播放。"
+                    is AudioDefaultStatus.LockedByOther -> "当前默认由「${audioDefaultStatus.appLabel}」接管，点右侧查看切换指引与系统应用入口。"
+                    AudioDefaultStatus.NoDefaultLocked -> "唤起系统音频打开方式（选择 Auralis 始终）或按本机品牌路径前往应用设置。"
+                },
                 actionLabel = "去设置",
-                grantedLabel = "已前往",
-                isGranted = defaultAppSettingsVisited,
-                onAction = onOpenDefaultPlayerSettings,
+                grantedLabel = "已是默认",
+                isGranted = isAlreadyDefaultAudio,
+                onAction = onOpenDefaultPlayerGuide,
                 buttonTestTag = "onboarding_perm_default_app_btn"
             )
         }

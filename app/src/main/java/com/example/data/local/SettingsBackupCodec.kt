@@ -96,6 +96,7 @@ private data class AppearanceBackupDto(
 
 private data class ScanFilterBackupDto(
     val minDurationSec: Int = 30,
+    val maxDurationSec: Int = 0,
     val minSizeKb: Int = 500,
     val excludeSystemAudio: Boolean = true,
     val requireMetadata: Boolean = true,
@@ -221,8 +222,9 @@ object SettingsBackupCodec {
                 deletionGuardMode = snapshot.deletionGuardMode.name
             ),
             scanFilter = ScanFilterBackupDto(
-                minDurationSec = snapshot.scanFilter.minDurationSec,
-                minSizeKb = snapshot.scanFilter.minSizeKb,
+                minDurationSec = snapshot.scanFilter.normalized().minDurationSec,
+                maxDurationSec = snapshot.scanFilter.normalized().maxDurationSec,
+                minSizeKb = snapshot.scanFilter.normalized().minSizeKb,
                 excludeSystemAudio = snapshot.scanFilter.excludeSystemAudio,
                 requireMetadata = snapshot.scanFilter.requireMetadata,
                 requireArtist = snapshot.scanFilter.requireArtist,
@@ -393,7 +395,8 @@ object SettingsBackupCodec {
                 enableGeneralAudioMode = doc.appearance.enableGeneralAudioMode,
                 deletionGuardMode = deletionGuard,
                 scanFilter = ScanFilterConfig(
-                    minDurationSec = doc.scanFilter.minDurationSec.coerceIn(0, 300),
+                    minDurationSec = doc.scanFilter.minDurationSec.coerceIn(0, 600),
+                    maxDurationSec = doc.scanFilter.maxDurationSec.coerceIn(0, 7200),
                     minSizeKb = doc.scanFilter.minSizeKb.coerceIn(0, 10_000),
                     excludeSystemAudio = doc.scanFilter.excludeSystemAudio,
                     requireMetadata = doc.scanFilter.requireMetadata,
@@ -404,7 +407,7 @@ object SettingsBackupCodec {
                         .map { it.trim() }
                         .filter { it.isNotEmpty() }
                         .toSet()
-                ),
+                ).normalized(),
                 lyricSettings = LyricSettings(
                     enableSimulatedWordByWord = doc.lyrics.enableSimulatedWordByWord,
                     showTranslation = doc.lyrics.showTranslation,

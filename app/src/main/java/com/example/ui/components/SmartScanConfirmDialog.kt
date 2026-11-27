@@ -14,8 +14,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,9 +48,10 @@ import com.example.ui.theme.adaptiveGoldColor
 fun SmartScanConfirmDialog(
     initialConfig: ScanFilterConfig,
     onConfirmScan: (ScanFilterConfig) -> Unit,
+    onOpenDetailedSettings: (ScanFilterConfig) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var config by remember(initialConfig) { mutableStateOf(initialConfig) }
+    var config by remember(initialConfig) { mutableStateOf(initialConfig.normalized()) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -72,27 +76,69 @@ fun SmartScanConfirmDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(14.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .border(0.6.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .border(0.6.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.FilterAlt,
-                        contentDescription = null,
-                        tint = adaptiveGoldColor(),
-                        modifier = Modifier.size(16.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.FilterAlt,
+                            contentDescription = null,
+                            tint = adaptiveGoldColor(),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "当前规则：时长 ${config.formatDurationRangeLabel()} · 体积 ≥ ${config.minSizeKb} KB · 屏蔽 ${config.excludedFolders.size} 个目录",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        thickness = 0.5.dp
                     )
-                    Text(
-                        text = "当前基础阈值：时长 ≥ ${config.minDurationSec} 秒 · 体积 ≥ ${config.minSizeKb} KB · 屏蔽 ${config.excludedFolders.size} 个目录关键字",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(RubyAccent.copy(alpha = 0.10f))
+                            .border(0.6.dp, RubyAccent.copy(alpha = 0.30f), RoundedCornerShape(10.dp))
+                            .clickable { onOpenDetailedSettings(config) }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .testTag("scan_dialog_open_detailed_settings"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = null,
+                            tint = RubyAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "前往「曲库与扫描」详细设置（时长上下限 / 目录）",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = RubyAccent,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = Icons.Rounded.ChevronRight,
+                            contentDescription = null,
+                            tint = RubyAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 ScanToggleOption(
@@ -140,7 +186,7 @@ fun SmartScanConfirmDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirmScan(config) },
+                onClick = { onConfirmScan(config.normalized()) },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = RubyAccent,
                     contentColor = Color.White
