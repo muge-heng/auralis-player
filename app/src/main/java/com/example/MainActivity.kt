@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -86,7 +87,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.util.lerp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.model.NavBarStyle
 import com.example.model.ScanFilterConfig
@@ -103,8 +108,11 @@ import com.example.ui.components.liquidGlassBackdropSource
 import com.example.ui.components.rememberLiquidGlassBackdropState
 import com.example.ui.components.shareAudioTrack
 import com.example.ui.screens.AiChatScreen
+import com.example.ui.screens.AuralisLaunchSplashOverlay
+import com.example.ui.screens.AuralisOnboardingScreen
 import com.example.ui.screens.DuplicateManagerSheet
 import com.example.ui.screens.EqualizerSheet
+import com.example.ui.screens.FirstLaunchWelcomeOverlay
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.LyricsManagerSheet
 import com.example.ui.screens.NowPlayingSheet
@@ -112,8 +120,10 @@ import com.example.ui.screens.NowPlayingStage
 import com.example.ui.screens.PlaylistsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.SettingsSection
+import com.example.ui.screens.openAppOpenByDefaultSettings
 import com.example.ui.screens.shouldCollapseNowPlayingSheet
 import com.example.ui.theme.AuralisTheme
+import com.example.ui.theme.ObsidianVoid
 import com.example.ui.theme.RubyAccent
 import com.example.viewmodel.AuralisViewModel
 import kotlinx.coroutines.launch
@@ -210,7 +220,12 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val formatFilter by viewModel.formatFilter.collectAsStateWithLifecycle()
     val sortOption by viewModel.sortOption.collectAsStateWithLifecycle()
+    val isBootDataReady by viewModel.isBootDataReady.collectAsStateWithLifecycle()
+    val hasCompletedOnboarding by viewModel.hasCompletedOnboarding.collectAsStateWithLifecycle()
     val selectedFolder by viewModel.selectedFolder.collectAsStateWithLifecycle()
+    val selectedAlbum by viewModel.selectedAlbum.collectAsStateWithLifecycle()
+    val selectedArtist by viewModel.selectedArtist.collectAsStateWithLifecycle()
+    val trackMetadataOverrides by viewModel.trackMetadataOverrides.collectAsStateWithLifecycle()
     val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
     val currentLyric by viewModel.currentLyric.collectAsStateWithLifecycle()
     val lyricSettings by viewModel.lyricSettings.collectAsStateWithLifecycle()
@@ -249,6 +264,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val pendingImportConflicts by viewModel.pendingImportConflicts.collectAsStateWithLifecycle()
     val pendingImportSourceLabel by viewModel.pendingImportSourceLabel.collectAsStateWithLifecycle()
 
+    var splashFinished by rememberSaveable { mutableStateOf(false) }
+    var showWelcomeAnimation by remember { mutableStateOf(false) }
     var currentTab by remember { mutableStateOf(MainDestination.LIBRARY) }
     var activeSettingsSection by rememberSaveable { mutableStateOf(SettingsSection.HUB) }
     var showEqualizer by remember { mutableStateOf(false) }
@@ -335,6 +352,53 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { _ -> }
+
+    // Live permission status for the onboarding 3-card permission hub (auto-refreshes on ON_RESUME)
+    fun checkAudioPermissionGranted(): Boolean =
+        ContextCompat.checkSelfPermission(context, audioPermission) == PackageManager.PERMISSION_GRANTED
+
+    fun checkNotificationPermissionGranted(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
+
+    var onboardingAudioGranted by remember { mutableStateOf(checkAudioPermissionGranted()) }
+    var onboardingNotificationGranted by remember { mutableStateOf(checkNotificationPermissionGranted()) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, audioPermission) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                onboardingAudioGranted = checkAudioPermissionGranted()
+                onboardingNotificationGranted = checkNotificationPermissionGranted()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val onboardingAudioPermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onboardingAudioGranted = granted || checkAudioPermissionGranted()
+        if (onboardingAudioGranted) {
+            viewModel.showBanner("已授予本地音频访问权限，进入应用后将自动扫描曲库")
+        }
+    }
+
+    val onboardingNotificationPermLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onboardingNotificationGranted = granted || checkNotificationPermissionGranted()
+        if (onboardingNotificationGranted) {
+            viewModel.showBanner("已开启媒体播放通知控制")
+        }
+    }
 
     // SAF Multi-Audio Picker
     val audioPickerLauncher = rememberLauncherForActivityResult(
@@ -551,6 +615,9 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
             }
         }
 
+        // Gate main UI behind isBootDataReady so cold start NEVER flashes an empty 0-track library
+        // or uncached default cover frame before Room DB + DataStore + top artwork are hydrated.
+        if (isBootDataReady && hasCompletedOnboarding == true) {
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
@@ -651,12 +718,17 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             formatFilter = formatFilter,
                             sortOption = sortOption,
                             selectedFolder = selectedFolder,
+                            selectedAlbum = selectedAlbum,
+                            selectedArtist = selectedArtist,
+                            trackMetadataOverrides = trackMetadataOverrides,
                             scanProgress = scanProgress,
                             playlists = playlists,
                             onSearchChange = viewModel::updateSearchQuery,
                             onFormatFilterChange = viewModel::updateFormatFilter,
                             onSortChange = viewModel::updateSortOption,
                             onSelectFolder = viewModel::selectFolder,
+                            onSelectAlbum = viewModel::selectAlbum,
+                            onSelectArtist = viewModel::selectArtist,
                             onRequestSmartScan = ::requestSmartScanDialog,
                             onImportAudioFiles = { audioPickerLauncher.launch(arrayOf("audio/*")) },
                             onImportFolder = { folderPickerLauncher.launch(null) },
@@ -685,6 +757,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                                     viewModel.showBanner("无法调起系统分享该音频文件")
                                 }
                             },
+                            onSaveTrackMetadata = viewModel::saveTrackMetadataEdit,
+                            onRestoreTrackMetadata = { track -> viewModel.restoreTrackMetadataOriginal(track.id) },
                             duplicateGroupCount = duplicateGroups.size,
                             duplicateRedundantCount = duplicateGroups.sumOf { it.redundantCount },
                             onOpenDuplicateManager = { showDuplicateManager = true },
@@ -922,6 +996,14 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                 }
             }
         }
+        } else if (!isBootDataReady) {
+            // Solid dark obsidian canvas matching native Android 12+ dark splash window
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(ObsidianVoid)
+            )
+        }
 
         // Continuous Interruptible Follow-Finger Full-Screen Now Playing Sheet
         if (playerExpansion.value > 0.002f && currentTrack != null) {
@@ -1017,7 +1099,10 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     },
                     onOpenEqualizer = { showEqualizer = true },
                     onOpenAiStudio = ::openAiWorkspace,
-                    onScrubHaptic = { viewModel.haptics.tickLight() }
+                    onScrubHaptic = { viewModel.haptics.tickLight() },
+                    hasMetadataOverride = trackMetadataOverrides.containsKey(currentTrack.id),
+                    onSaveTrackMetadata = viewModel::saveTrackMetadataEdit,
+                    onRestoreTrackMetadata = { track -> viewModel.restoreTrackMetadataOriginal(track.id) }
                 )
             }
         }
@@ -1204,6 +1289,64 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                         Text("取消")
                     }
                 }
+            )
+        }
+
+        // First-launch multi-page onboarding (shown once when hasCompletedOnboarding == false after boot hydration)
+        if (isBootDataReady && hasCompletedOnboarding == false) {
+            AuralisOnboardingScreen(
+                audioPermissionGranted = onboardingAudioGranted,
+                notificationPermissionGranted = onboardingNotificationGranted,
+                onRequestAudioPermission = {
+                    viewModel.haptics.tickLight()
+                    if (!onboardingAudioGranted) {
+                        onboardingAudioPermLauncher.launch(audioPermission)
+                    }
+                },
+                onRequestNotificationPermission = {
+                    viewModel.haptics.tickLight()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (!onboardingNotificationGranted) {
+                            onboardingNotificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    } else if (!onboardingNotificationGranted) {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        }
+                    }
+                },
+                onOpenDefaultPlayerSettings = {
+                    viewModel.haptics.tickLight()
+                    openAppOpenByDefaultSettings(context)
+                },
+                onFinishOnboarding = { triggerScanIfGranted ->
+                    viewModel.haptics.springImpact()
+                    viewModel.completeOnboarding()
+                    showWelcomeAnimation = true
+                    if (triggerScanIfGranted && onboardingAudioGranted) {
+                        viewModel.scanDeviceLibrary()
+                    }
+                }
+            )
+        }
+
+        // First-launch welcome bloom animation right after completing onboarding
+        if (showWelcomeAnimation) {
+            FirstLaunchWelcomeOverlay(
+                onFinished = { showWelcomeAnimation = false }
+            )
+        }
+
+        // Custom vector/Canvas cold-start launch splash (holds until Room DB + DataStore + top covers are ready)
+        if (!splashFinished) {
+            AuralisLaunchSplashOverlay(
+                isBootReady = isBootDataReady,
+                onFinished = { splashFinished = true }
             )
         }
     }

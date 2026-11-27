@@ -878,45 +878,72 @@ fun PlaylistsScreen(
                                     }
                                 }
 
-                                // Quick Selection Helper Strip when in batch management mode
+                                // Compact Quick Selection Helper Strip when in batch management mode
                                 if (isSelectionMode && collectionTracks.isNotEmpty()) {
                                     val allSelected = collectionTracks.all { it.id in selectedIds }
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                            .border(
+                                                0.7.dp,
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
-                                        item {
-                                            FilterChip(
-                                                selected = allSelected,
-                                                onClick = {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(9.dp))
+                                                .background(
+                                                    if (allSelected) MaterialTheme.colorScheme.primaryContainer
+                                                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                                                )
+                                                .clickable {
                                                     selectedIds = if (allSelected) {
                                                         emptySet()
                                                     } else {
                                                         collectionTracks.map { it.id }.toSet()
                                                     }
-                                                },
-                                                label = { Text(if (allSelected) "取消全选" else "全选 (${collectionTracks.size})") }
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (allSelected) "取消全选" else "全选 (${collectionTracks.size})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = if (allSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
                                             )
                                         }
-                                        item {
-                                            FilterChip(
-                                                selected = false,
-                                                onClick = {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(9.dp))
+                                                .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                                                .clickable {
                                                     val allIds = collectionTracks.map { it.id }.toSet()
                                                     selectedIds = allIds - selectedIds
-                                                },
-                                                label = { Text("反选") }
-                                            )
-                                        }
-                                        item {
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        ) {
                                             Text(
-                                                text = "已选 ${selectedTracks.size} 首",
+                                                text = "反选",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = adaptiveGoldColor(),
-                                                modifier = Modifier.padding(start = 4.dp)
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1
                                             )
                                         }
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Text(
+                                            text = "已选 ${selectedTracks.size} 首",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = adaptiveGoldColor(),
+                                            maxLines = 1
+                                        )
                                     }
                                 }
                             }

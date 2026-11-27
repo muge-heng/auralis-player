@@ -328,6 +328,9 @@ fun MiniPlayerBar(
                                 albumArtUri = track.albumArtUri,
                                 contentDescription = stringResource(R.string.cd_album_art),
                                 cornerRadius = 11.dp,
+                                decodeSizePx = 256,
+                                holdLastArtwork = true,
+                                isGeneralAudio = track.isGeneralAudio,
                                 modifier = Modifier.size(46.dp)
                             )
                         }

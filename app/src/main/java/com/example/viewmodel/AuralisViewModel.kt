@@ -57,17 +57,24 @@ import com.example.model.PlaylistEntity
 import com.example.model.PlaylistTrackCrossRef
 import com.example.model.PlaylistWithCount
 import com.example.model.ReasoningEffortLevel
+import coil.imageLoader
 import com.example.model.ScanFilterConfig
+import com.example.model.SmartLibrarySorter
 import com.example.model.Track
+import com.example.model.TrackMetadataOverride
 import com.example.model.normalizeEqBands
 import com.example.playback.AcousticDspEngine
 import com.example.playback.HapticEngine
 import com.example.playback.PaletteExtractor
 import com.example.playback.PlaybackController
 import com.example.playback.PlaybackState
+import com.example.ui.components.buildTrackArtworkRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -216,6 +223,15 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     val audioBookmarks: StateFlow<Map<String, List<AudioBookmark>>> = prefs.audioBookmarksFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    val trackMetadataOverrides: StateFlow<Map<String, TrackMetadataOverride>> = prefs.trackMetadataOverridesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    private val _isBootDataReady = MutableStateFlow(false)
+    val isBootDataReady: StateFlow<Boolean> = _isBootDataReady.asStateFlow()
+
+    private val _hasCompletedOnboarding = MutableStateFlow<Boolean?>(null)
+    val hasCompletedOnboarding: StateFlow<Boolean?> = _hasCompletedOnboarding.asStateFlow()
+
     val allTracks: StateFlow<List<Track>> = trackDao.observeAllTracks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -274,7 +290,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    // Library search, format filter, sort, folder filter
+    // Library search, format filter, sort, folder/album/artist filters
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -284,37 +300,57 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     private val _sortOption = MutableStateFlow(LibrarySortOption.RECENT)
     val sortOption: StateFlow<LibrarySortOption> = _sortOption.asStateFlow()
 
+    private val _smartSortSeed = MutableStateFlow(System.nanoTime())
+
     private val _selectedFolder = MutableStateFlow<String?>(null)
     val selectedFolder: StateFlow<String?> = _selectedFolder.asStateFlow()
 
+    private val _selectedAlbum = MutableStateFlow<String?>(null)
+    val selectedAlbum: StateFlow<String?> = _selectedAlbum.asStateFlow()
+
+    private val _selectedArtist = MutableStateFlow<String?>(null)
+    val selectedArtist: StateFlow<String?> = _selectedArtist.asStateFlow()
+
+    private data class LibraryFilterCriteria(
+        val query: String,
+        val fmt: LibraryFilterFormat,
+        val sort: LibrarySortOption,
+        val smartSeed: Long,
+        val folder: String?,
+        val album: String?,
+        val artist: String?
+    )
+
+    private val libraryCriteriaFlow = combine(
+        combine(_searchQuery, _formatFilter, _sortOption, _smartSortSeed) { q, f, s, seed ->
+            LibraryFilterCriteria(q, f, s, seed, null, null, null)
+        },
+        combine(_selectedFolder, _selectedAlbum, _selectedArtist) { folder, album, artist ->
+            Triple(folder, album, artist)
+        }
+    ) { base, (folder, album, artist) ->
+        base.copy(folder = folder, album = album, artist = artist)
+    }
+
     val filteredTracks: StateFlow<List<Track>> = combine(
         musicTracks,
-        _searchQuery,
-        _formatFilter,
-        _sortOption,
-        _selectedFolder
-    ) { tracks, query, fmt, sort, folder ->
-        applyLibraryFilter(tracks, query, fmt, sort, folder)
+        libraryCriteriaFlow
+    ) { tracks, criteria ->
+        applyLibraryFilter(tracks, criteria)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val filteredGeneralAudioTracks: StateFlow<List<Track>> = combine(
         generalAudioTracks,
-        _searchQuery,
-        _formatFilter,
-        _sortOption,
-        _selectedFolder
-    ) { tracks, query, fmt, sort, folder ->
-        applyLibraryFilter(tracks, query, fmt, sort, folder)
+        libraryCriteriaFlow
+    ) { tracks, criteria ->
+        applyLibraryFilter(tracks, criteria.copy(album = null, artist = null))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private fun applyLibraryFilter(
         tracks: List<Track>,
-        query: String,
-        fmt: LibraryFilterFormat,
-        sort: LibrarySortOption,
-        folder: String?
+        criteria: LibraryFilterCriteria
     ): List<Track> {
-        val q = query.trim().lowercase()
+        val q = criteria.query.trim().lowercase()
         return tracks.filter { t ->
             val matchesQuery = q.isEmpty() ||
                 t.title.lowercase().contains(q) ||
@@ -322,16 +358,21 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 t.album.lowercase().contains(q) ||
                 t.codecLabel.lowercase().contains(q) ||
                 t.fileName.lowercase().contains(q)
-            val matchesFmt = when (fmt) {
+            val matchesFmt = when (criteria.fmt) {
                 LibraryFilterFormat.ALL -> true
                 LibraryFilterFormat.LOSSLESS -> t.isLossless
                 LibraryFilterFormat.HIRES -> t.isHiRes
                 LibraryFilterFormat.LOSSY -> !t.isLossless
             }
-            val matchesFolder = folder == null || t.folderPath == folder
-            matchesQuery && matchesFmt && matchesFolder
+            val matchesFolder = criteria.folder == null || t.folderPath == criteria.folder
+            val matchesAlbum = criteria.album == null ||
+                t.album.ifBlank { "未知专辑" } == criteria.album
+            val matchesArtist = criteria.artist == null ||
+                t.artist.ifBlank { "未知艺术家" } == criteria.artist
+            matchesQuery && matchesFmt && matchesFolder && matchesAlbum && matchesArtist
         }.let { list ->
-            when (sort) {
+            when (criteria.sort) {
+                LibrarySortOption.SMART -> SmartLibrarySorter.sort(list, sessionSeed = criteria.smartSeed)
                 LibrarySortOption.RECENT -> list.sortedByDescending { it.dateAddedSec }
                 LibrarySortOption.TITLE -> list.sortedBy { it.title.lowercase() }
                 LibrarySortOption.ARTIST -> list.sortedBy { it.artist.lowercase() }
@@ -411,6 +452,56 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         playbackController.connect()
+        // Cold-start hydration: wait for preferences, initial Room tracks snapshot, AND pre-warm
+        // the top visible album covers in Coil memory cache before lifting our custom splash curtain
+        // so there is NEVER an empty-library flash or uncached-cover frame.
+        viewModelScope.launch {
+            try {
+                withTimeoutOrNull(900L) {
+                    val onboardedDeferred = async(Dispatchers.IO) {
+                        runCatching { prefs.hasCompletedOnboardingFlow.first() }.getOrDefault(false)
+                    }
+                    val tracksDeferred = async(Dispatchers.IO) {
+                        runCatching { trackDao.observeAllTracks().first() }.getOrDefault(emptyList())
+                    }
+                    val onboarded = onboardedDeferred.await()
+                    val initialTracks = tracksDeferred.await()
+                    _hasCompletedOnboarding.value = onboarded
+
+                    // Pre-warm top 16 covers into Coil's memory cache so Frame 1 renders real covers instantly
+                    val topCovers = initialTracks.filter { !it.isGeneralAudio }.take(16)
+                    if (topCovers.isNotEmpty()) {
+                        val loader = context.imageLoader
+                        topCovers.map { track ->
+                            async(Dispatchers.IO) {
+                                buildTrackArtworkRequest(
+                                    context = context,
+                                    artworkPath = track.artworkPath,
+                                    albumArtUri = track.albumArtUri,
+                                    decodeSizePx = 256
+                                )?.let { req ->
+                                    runCatching { loader.execute(req) }
+                                }
+                            }
+                        }.awaitAll()
+                    }
+                }
+            } finally {
+                if (_hasCompletedOnboarding.value == null) {
+                    _hasCompletedOnboarding.value = runCatching {
+                        prefs.hasCompletedOnboardingFlow.first()
+                    }.getOrDefault(false)
+                }
+                _isBootDataReady.value = true
+            }
+        }
+        viewModelScope.launch {
+            prefs.hasCompletedOnboardingFlow.collect { completed ->
+                if (_isBootDataReady.value) {
+                    _hasCompletedOnboarding.value = completed
+                }
+            }
+        }
         viewModelScope.launch {
             val existing = runCatching { aiChatDao.getSessionsSnapshot() }.getOrDefault(emptyList())
             if (existing.isEmpty()) {
@@ -484,14 +575,53 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         _formatFilter.value = format
     }
 
+    fun completeOnboarding() {
+        _hasCompletedOnboarding.value = true
+        viewModelScope.launch {
+            prefs.setOnboardingCompleted(true)
+        }
+    }
+
     fun updateSortOption(option: LibrarySortOption) {
         haptics.tickLight()
+        if (option == LibrarySortOption.SMART) {
+            // Re-selecting or entering Smart Sort refreshes the dynamic session seed
+            _smartSortSeed.value = System.nanoTime()
+        }
         _sortOption.value = option
     }
 
     fun selectFolder(folder: String?) {
         haptics.tickLight()
         _selectedFolder.value = folder
+        if (folder != null) {
+            _selectedAlbum.value = null
+            _selectedArtist.value = null
+        }
+    }
+
+    fun selectAlbum(album: String?) {
+        haptics.tickLight()
+        _selectedAlbum.value = album
+        if (album != null) {
+            _selectedFolder.value = null
+            _selectedArtist.value = null
+        }
+    }
+
+    fun selectArtist(artist: String?) {
+        haptics.tickLight()
+        _selectedArtist.value = artist
+        if (artist != null) {
+            _selectedFolder.value = null
+            _selectedAlbum.value = null
+        }
+    }
+
+    fun clearGroupedDrilldownFilters() {
+        _selectedFolder.value = null
+        _selectedAlbum.value = null
+        _selectedArtist.value = null
     }
 
     fun scanDeviceLibraryWithConfig(config: ScanFilterConfig) {
@@ -637,8 +767,17 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
     private suspend fun enrichTracksWithArchivedHistory(tracks: List<Track>): List<Track> {
         if (tracks.isEmpty()) return tracks
         val archived = prefs.getArchivedTrackRecords()
-        if (archived.isEmpty()) return tracks
-        return PreferencesRepository.applyArchivedRecordsToTracks(tracks, archived)
+        val withHistory = if (archived.isEmpty()) {
+            tracks
+        } else {
+            PreferencesRepository.applyArchivedRecordsToTracks(tracks, archived)
+        }
+        val overrides = prefs.getTrackMetadataOverridesSnapshot()
+        return if (overrides.isEmpty()) {
+            withHistory
+        } else {
+            PreferencesRepository.applyMetadataOverridesToTracks(withHistory, overrides)
+        }
     }
 
     private fun buildImportSummaryBanner(
@@ -965,6 +1104,148 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         haptics.springImpact()
         val ordered = if (shuffle) tracks.shuffled() else tracks
         playbackController.playQueue(ordered, 0)
+        if (shuffle) {
+            playbackController.setShuffleEnabled(true)
+        }
+    }
+
+    /**
+     * Saves in-app metadata edits (title, artist, album, and optional custom cover art) without
+     * modifying the underlying audio file. Stores the original snapshot for 1-tap restore.
+     */
+    fun saveTrackMetadataEdit(
+        track: Track,
+        newTitle: String,
+        newArtist: String,
+        newAlbum: String,
+        pickedCoverUri: Uri? = null,
+        clearCustomCover: Boolean = false
+    ) {
+        val cleanTitle = newTitle.trim().ifBlank { track.title }
+        val cleanArtist = newArtist.trim().ifBlank { track.artist }
+        val cleanAlbum = newAlbum.trim().ifBlank { track.album }
+        viewModelScope.launch {
+            val existingOverride = prefs.getTrackMetadataOverridesSnapshot()[track.id]
+            val origTitle = existingOverride?.originalTitle ?: track.title
+            val origArtist = existingOverride?.originalArtist ?: track.artist
+            val origAlbum = existingOverride?.originalAlbum ?: track.album
+            val origArtworkPath = existingOverride?.originalArtworkPath ?: track.artworkPath
+            val origAlbumArtUri = existingOverride?.originalAlbumArtUri ?: track.albumArtUri
+
+            val resolvedCustomCoverPath: String? = when {
+                pickedCoverUri != null -> withContext(Dispatchers.IO) {
+                    runCatching {
+                        val dir = java.io.File(context.filesDir, "custom_track_covers").apply { mkdirs() }
+                        val safeName = track.id.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+                        val outFile = java.io.File(dir, "${safeName}_${System.currentTimeMillis()}.jpg")
+                        context.contentResolver.openInputStream(pickedCoverUri)?.use { input ->
+                            outFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        existingOverride?.customArtworkPath?.let { oldPath ->
+                            runCatching { java.io.File(oldPath).delete() }
+                        }
+                        if (outFile.exists() && outFile.length() > 0L) outFile.absolutePath else null
+                    }.getOrNull()
+                }
+                clearCustomCover -> {
+                    existingOverride?.customArtworkPath?.let { oldPath ->
+                        withContext(Dispatchers.IO) { runCatching { java.io.File(oldPath).delete() } }
+                    }
+                    null
+                }
+                else -> existingOverride?.customArtworkPath
+            }
+
+            val finalArtworkPath = resolvedCustomCoverPath ?: origArtworkPath
+            val updated = track.copy(
+                title = cleanTitle,
+                artist = cleanArtist,
+                album = cleanAlbum,
+                artworkPath = finalArtworkPath,
+                albumArtUri = origAlbumArtUri
+            )
+
+            val overrideRecord = TrackMetadataOverride(
+                trackId = track.id,
+                title = cleanTitle,
+                artist = cleanArtist,
+                album = cleanAlbum,
+                customArtworkPath = resolvedCustomCoverPath,
+                originalTitle = origTitle,
+                originalArtist = origArtist,
+                originalAlbum = origAlbum,
+                originalArtworkPath = origArtworkPath,
+                originalAlbumArtUri = origAlbumArtUri
+            )
+            prefs.saveTrackMetadataOverride(overrideRecord)
+            withContext(Dispatchers.IO) {
+                trackDao.updateTrackMetadata(
+                    trackId = track.id,
+                    title = updated.title,
+                    artist = updated.artist,
+                    album = updated.album,
+                    artworkPath = updated.artworkPath,
+                    albumArtUri = updated.albumArtUri
+                )
+            }
+            playbackController.syncTrackMetadataUpdate(updated)
+            if (playbackState.value.currentTrack?.id == track.id) {
+                _auraPalette.value = runCatching {
+                    PaletteExtractor.extractFromTrackArtwork(
+                        context = context,
+                        artworkPath = updated.artworkPath,
+                        albumArtUri = updated.albumArtUri
+                    )
+                }.getOrDefault(AuraPalette())
+            }
+            haptics.harmonicChime()
+            showBanner("已保存应用内曲目信息（原音频文件未改动）", StatusToastLevel.SUCCESS)
+        }
+    }
+
+    /**
+     * Restores a previously edited track back to its original scanned metadata & cover art.
+     */
+    fun restoreTrackMetadataOriginal(trackId: String) {
+        viewModelScope.launch {
+            val removed = prefs.removeTrackMetadataOverride(trackId)
+            if (removed == null) {
+                showBanner("当前曲目已是原始信息")
+                return@launch
+            }
+            removed.customArtworkPath?.let { oldPath ->
+                withContext(Dispatchers.IO) { runCatching { java.io.File(oldPath).delete() } }
+            }
+            val currentDbTrack = withContext(Dispatchers.IO) { trackDao.getTrackById(trackId) }
+            val restoredTitle = removed.originalTitle.ifBlank { currentDbTrack?.title ?: "" }
+            val restoredArtist = removed.originalArtist.ifBlank { currentDbTrack?.artist ?: "" }
+            val restoredAlbum = removed.originalAlbum.ifBlank { currentDbTrack?.album ?: "" }
+            withContext(Dispatchers.IO) {
+                trackDao.updateTrackMetadata(
+                    trackId = trackId,
+                    title = restoredTitle,
+                    artist = restoredArtist,
+                    album = restoredAlbum,
+                    artworkPath = removed.originalArtworkPath,
+                    albumArtUri = removed.originalAlbumArtUri
+                )
+            }
+            val refreshed = withContext(Dispatchers.IO) { trackDao.getTrackById(trackId) }
+            if (refreshed != null) {
+                playbackController.syncTrackMetadataUpdate(refreshed)
+                if (playbackState.value.currentTrack?.id == trackId) {
+                    _auraPalette.value = runCatching {
+                        PaletteExtractor.extractFromTrackArtwork(
+                            context = context,
+                            artworkPath = refreshed.artworkPath,
+                            albumArtUri = refreshed.albumArtUri
+                        )
+                    }.getOrDefault(AuraPalette())
+                }
+            }
+            haptics.tickLight()
+            showBanner("已恢复原始曲目信息与封面", StatusToastLevel.SUCCESS)
+        }
     }
 
     fun playNextInQueue(track: Track) {
@@ -1050,6 +1331,21 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     albumArtUri = track.albumArtUri
                 )
             }.getOrDefault(AuraPalette())
+        }
+        // Proactively pre-warm current & adjacent tracks' artwork in Coil memory cache
+        // so auto-skipping and rapid Next/Prev transitions never flash a fallback placeholder.
+        viewModelScope.launch(Dispatchers.IO) {
+            val curPlayback = playbackState.value
+            val targets = listOfNotNull(track, curPlayback.nextTrack, curPlayback.previousTrack).distinctBy { it.id }
+            val loader = context.imageLoader
+            targets.forEach { t ->
+                buildTrackArtworkRequest(context, t.artworkPath, t.albumArtUri, decodeSizePx = 768)?.let {
+                    loader.enqueue(it)
+                }
+                buildTrackArtworkRequest(context, t.artworkPath, t.albumArtUri, decodeSizePx = 256)?.let {
+                    loader.enqueue(it)
+                }
+            }
         }
         // Skip music lyric loading when playing General Audio (recordings, podcasts, etc.)
         if (track.isGeneralAudio) {
@@ -2977,8 +3273,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                         _pendingImportConflicts.value = emptyList()
                         _searchQuery.value = ""
                         _selectedFolder.value = null
+                        _selectedAlbum.value = null
+                        _selectedArtist.value = null
                         _formatFilter.value = LibraryFilterFormat.ALL
                         _sortOption.value = LibrarySortOption.RECENT
+                        _hasCompletedOnboarding.value = false
                         withContext(Dispatchers.IO) {
                             trackDao.clearAll()
                             customLyricDao.clearAllCustomLyrics()

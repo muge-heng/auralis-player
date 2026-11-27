@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -101,6 +102,7 @@ import com.example.model.LibraryFilterFormat
 import com.example.model.LibrarySortOption
 import com.example.model.PlaylistWithCount
 import com.example.model.Track
+import com.example.model.TrackMetadataOverride
 import com.example.model.formatDuration
 import com.example.ui.components.AudioTrackInfoDialog
 import com.example.ui.components.BatchPlaylistPickerDialog
@@ -133,12 +135,17 @@ fun LibraryScreen(
     formatFilter: LibraryFilterFormat,
     sortOption: LibrarySortOption,
     selectedFolder: String?,
+    selectedAlbum: String? = null,
+    selectedArtist: String? = null,
+    trackMetadataOverrides: Map<String, TrackMetadataOverride> = emptyMap(),
     scanProgress: ScanProgress,
     playlists: List<PlaylistWithCount>,
     onSearchChange: (String) -> Unit,
     onFormatFilterChange: (LibraryFilterFormat) -> Unit,
     onSortChange: (LibrarySortOption) -> Unit,
     onSelectFolder: (String?) -> Unit,
+    onSelectAlbum: (String?) -> Unit = {},
+    onSelectArtist: (String?) -> Unit = {},
     onRequestSmartScan: () -> Unit,
     onImportAudioFiles: () -> Unit,
     onImportFolder: () -> Unit,
@@ -158,6 +165,8 @@ fun LibraryScreen(
     onBurnLyricsToAudio: (Track) -> Unit = {},
     onExportTrackLyrics: (Track) -> Unit = {},
     onShareTrack: (Track) -> Unit = {},
+    onSaveTrackMetadata: (Track, String, String, String, Uri?, Boolean) -> Unit = { _, _, _, _, _, _ -> },
+    onRestoreTrackMetadata: (Track) -> Unit = {},
     duplicateGroupCount: Int = 0,
     duplicateRedundantCount: Int = 0,
     onOpenDuplicateManager: () -> Unit = {},
@@ -165,6 +174,7 @@ fun LibraryScreen(
     contentBottomPadding: Int
 ) {
     var activeTab by remember { mutableStateOf(LibraryViewTab.TRACKS) }
+    var drilldownOriginTab by remember { mutableStateOf<LibraryViewTab?>(null) }
     var viewingGeneralAudio by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -181,6 +191,24 @@ fun LibraryScreen(
     BackHandler(enabled = isSelectionMode) {
         isSelectionMode = false
         selectedIds = emptySet()
+    }
+
+    val hasActiveDrilldown = !effectiveViewingGeneral &&
+        activeTab == LibraryViewTab.TRACKS &&
+        (selectedFolder != null || selectedAlbum != null || selectedArtist != null)
+
+    BackHandler(enabled = !isSelectionMode && hasActiveDrilldown) {
+        val returnTab = drilldownOriginTab ?: when {
+            selectedAlbum != null -> LibraryViewTab.ALBUMS
+            selectedArtist != null -> LibraryViewTab.ARTISTS
+            selectedFolder != null -> LibraryViewTab.FOLDERS
+            else -> LibraryViewTab.TRACKS
+        }
+        onSelectFolder(null)
+        onSelectAlbum(null)
+        onSelectArtist(null)
+        drilldownOriginTab = null
+        activeTab = returnTab
     }
 
     val losslessCount = remember(musicTracks) { musicTracks.count { it.isLossless } }
@@ -570,18 +598,37 @@ fun LibraryScreen(
                             onDismissRequest = { showSortMenu = false }
                         ) {
                             LibrarySortOption.entries.forEach { opt ->
+                                val isCurrent = opt == sortOption
+                                val itemLabel = if (opt == LibrarySortOption.SMART && isCurrent) {
+                                    "${opt.label} · 换一批"
+                                } else {
+                                    opt.label
+                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text(
-                                            text = opt.label,
-                                            fontWeight = if (opt == sortOption) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (opt == sortOption) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            text = itemLabel,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                         )
+                                    },
+                                    leadingIcon = if (opt == LibrarySortOption.SMART) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Rounded.AutoAwesome,
+                                                contentDescription = null,
+                                                tint = if (isCurrent) MaterialTheme.colorScheme.primary else adaptiveGoldColor(),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    } else {
+                                        null
                                     },
                                     onClick = {
                                         onSortChange(opt)
                                         showSortMenu = false
-                                    }
+                                    },
+                                    modifier = Modifier.testTag("sort_option_${opt.name.lowercase()}")
                                 )
                             }
                         }
@@ -609,7 +656,12 @@ fun LibraryScreen(
                                         )
                                         .clickable {
                                             activeTab = tab
-                                            if (tab != LibraryViewTab.TRACKS) onSelectFolder(null)
+                                            if (tab != LibraryViewTab.TRACKS) {
+                                                onSelectFolder(null)
+                                                onSelectAlbum(null)
+                                                onSelectArtist(null)
+                                                drilldownOriginTab = null
+                                            }
                                         }
                                         .padding(vertical = 10.dp),
                                     contentAlignment = Alignment.Center
@@ -635,12 +687,42 @@ fun LibraryScreen(
                                     )
                                 )
                             }
-                            if (selectedFolder != null) {
-                                item {
+                            if (selectedAlbum != null) {
+                                item(key = "chip_selected_album") {
                                     FilterChip(
                                         selected = true,
-                                        onClick = { onSelectFolder(null) },
-                                        label = { Text("目录: $selectedFolder ×") }
+                                        onClick = {
+                                            onSelectAlbum(null)
+                                            drilldownOriginTab = null
+                                        },
+                                        label = { Text("专辑: $selectedAlbum ×") },
+                                        modifier = Modifier.testTag("filter_chip_album")
+                                    )
+                                }
+                            }
+                            if (selectedArtist != null) {
+                                item(key = "chip_selected_artist") {
+                                    FilterChip(
+                                        selected = true,
+                                        onClick = {
+                                            onSelectArtist(null)
+                                            drilldownOriginTab = null
+                                        },
+                                        label = { Text("艺术家: $selectedArtist ×") },
+                                        modifier = Modifier.testTag("filter_chip_artist")
+                                    )
+                                }
+                            }
+                            if (selectedFolder != null) {
+                                item(key = "chip_selected_folder") {
+                                    FilterChip(
+                                        selected = true,
+                                        onClick = {
+                                            onSelectFolder(null)
+                                            drilldownOriginTab = null
+                                        },
+                                        label = { Text("目录: $selectedFolder ×") },
+                                        modifier = Modifier.testTag("filter_chip_folder")
                                     )
                                 }
                             }
@@ -705,19 +787,19 @@ fun LibraryScreen(
                             }
                         }
                     } else {
-                        // One-Click Selection Control Bar
+                        // Compact Selection Control Bar (eliminates tall M3 TextButton/FilterChip vertical bloat)
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                                 .border(
-                                    1.dp,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
-                                    RoundedCornerShape(18.dp)
+                                    0.85.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+                                    RoundedCornerShape(16.dp)
                                 )
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -726,25 +808,48 @@ fun LibraryScreen(
                             ) {
                                 Text(
                                     text = "批量管理 · 已选 ${selectedIds.size} / ${activeFilteredTracks.size} 首",
-                                    style = MaterialTheme.typography.titleSmall,
+                                    style = MaterialTheme.typography.labelLarge,
                                     color = adaptiveGoldColor(),
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
-                                TextButton(
-                                    onClick = {
-                                        isSelectionMode = false
-                                        selectedIds = emptySet()
-                                    }
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                        .clickable {
+                                            isSelectionMode = false
+                                            selectedIds = emptySet()
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .testTag("batch_done_button"),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Close, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("完成")
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "完成",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 item {
                                     val allSelected = activeFilteredTracks.isNotEmpty() && activeFilteredTracks.all { it.id in selectedIds }
-                                    FilterChip(
+                                    CompactBatchActionPill(
+                                        label = if (allSelected) "取消全选" else "全选当前列表",
                                         selected = allSelected,
                                         onClick = {
                                             selectedIds = if (allSelected) {
@@ -753,28 +858,27 @@ fun LibraryScreen(
                                                 activeFilteredTracks.map { it.id }.toSet()
                                             }
                                         },
-                                        label = { Text(if (allSelected) "取消全选" else "全选当前列表") },
                                         modifier = Modifier.testTag("batch_select_all")
                                     )
                                 }
                                 item {
                                     val losslessIds = activeFilteredTracks.filter { it.isLossless }.map { it.id }.toSet()
                                     if (losslessIds.isNotEmpty()) {
-                                        FilterChip(
+                                        CompactBatchActionPill(
+                                            label = "仅选无损 (${losslessIds.size})",
                                             selected = losslessIds.all { it in selectedIds },
-                                            onClick = { selectedIds = losslessIds },
-                                            label = { Text("仅选无损 (${losslessIds.size})") }
+                                            onClick = { selectedIds = losslessIds }
                                         )
                                     }
                                 }
                                 item {
-                                    FilterChip(
+                                    CompactBatchActionPill(
+                                        label = "反选",
                                         selected = false,
                                         onClick = {
                                             val allSet = activeFilteredTracks.map { it.id }.toSet()
                                             selectedIds = allSet - selectedIds
-                                        },
-                                        label = { Text("反选") }
+                                        }
                                     )
                                 }
                             }
@@ -878,13 +982,25 @@ fun LibraryScreen(
                 LibraryViewTab.ALBUMS -> {
                     items(albums, key = { "album_${it.key}" }) { (albumName, tracks) ->
                         val cover = tracks.firstOrNull()
+                        val hasHiRes = tracks.any { it.isHiRes }
+                        val hasLossless = tracks.any { it.isLossless }
                         GroupedCollectionCard(
                             title = albumName,
                             subtitle = "${cover?.artist ?: "群星"} · ${tracks.size} 首",
                             artworkPath = cover?.artworkPath,
                             albumArtUri = cover?.albumArtUri,
-                            badgeText = if (tracks.any { it.isLossless }) "LOSSLESS" else null,
-                            onClick = { onPlayAll(tracks, false) },
+                            badgeText = when {
+                                hasHiRes -> "Hi-Res"
+                                hasLossless -> "无损"
+                                else -> null
+                            },
+                            badgeIsHiRes = hasHiRes,
+                            onClick = {
+                                drilldownOriginTab = LibraryViewTab.ALBUMS
+                                onSelectAlbum(albumName)
+                                activeTab = LibraryViewTab.TRACKS
+                            },
+                            onPlay = { onPlayAll(tracks, false) },
                             onAppendQueue = { onAppendToQueue(tracks) },
                             onAddToPlaylist = { pendingPlaylistTargetIds = tracks.map { it.id } }
                         )
@@ -900,7 +1016,12 @@ fun LibraryScreen(
                             artworkPath = cover?.artworkPath,
                             albumArtUri = cover?.albumArtUri,
                             badgeText = null,
-                            onClick = { onPlayAll(tracks, false) },
+                            onClick = {
+                                drilldownOriginTab = LibraryViewTab.ARTISTS
+                                onSelectArtist(artistName)
+                                activeTab = LibraryViewTab.TRACKS
+                            },
+                            onPlay = { onPlayAll(tracks, false) },
                             onAppendQueue = { onAppendToQueue(tracks) },
                             onAddToPlaylist = { pendingPlaylistTargetIds = tracks.map { it.id } }
                         )
@@ -916,6 +1037,7 @@ fun LibraryScreen(
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainer)
                                 .clickable {
+                                    drilldownOriginTab = LibraryViewTab.FOLDERS
                                     onSelectFolder(folderName)
                                     activeTab = LibraryViewTab.TRACKS
                                 }
@@ -1137,13 +1259,19 @@ fun LibraryScreen(
     }
 
     inspectingTrack?.let { infoTrack ->
+        val liveTrack = activeAllTracks.firstOrNull { it.id == infoTrack.id } ?: infoTrack
         AudioTrackInfoDialog(
-            track = infoTrack,
+            track = liveTrack,
             onDismiss = { inspectingTrack = null },
-            onShare = { onShareTrack(infoTrack) },
+            onShare = { onShareTrack(liveTrack) },
             onToggleGeneralAudio = {
-                onSetTracksGeneralAudio(listOf(infoTrack.id), !infoTrack.isGeneralAudio)
-            }
+                onSetTracksGeneralAudio(listOf(liveTrack.id), !liveTrack.isGeneralAudio)
+            },
+            hasMetadataOverride = trackMetadataOverrides.containsKey(liveTrack.id),
+            onSaveMetadata = { title, artist, album, coverUri, clearCover ->
+                onSaveTrackMetadata(liveTrack, title, artist, album, coverUri, clearCover)
+            },
+            onRestoreMetadata = { onRestoreTrackMetadata(liveTrack) }
         )
     }
 }
@@ -1727,13 +1855,50 @@ fun TrackListItem(
 }
 
 @Composable
+private fun CompactBatchActionPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f)
+            )
+            .border(
+                width = 0.7.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(10.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
 private fun GroupedCollectionCard(
     title: String,
     subtitle: String,
     artworkPath: String?,
     albumArtUri: String?,
     badgeText: String?,
+    badgeIsHiRes: Boolean = false,
     onClick: () -> Unit,
+    onPlay: () -> Unit,
     onAppendQueue: () -> Unit,
     onAddToPlaylist: () -> Unit
 ) {
@@ -1745,7 +1910,7 @@ private fun GroupedCollectionCard(
             .clip(RoundedCornerShape(18.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
             .clickable(onClick = onClick)
-            .padding(12.dp),
+            .padding(start = 12.dp, top = 11.dp, bottom = 11.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         TrackArtwork(
@@ -1753,33 +1918,43 @@ private fun GroupedCollectionCard(
             albumArtUri = albumArtUri,
             contentDescription = title,
             cornerRadius = 14.dp,
-            modifier = Modifier.size(58.dp)
+            modifier = Modifier.size(56.dp)
         )
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
+            // Album / Artist title gets 100% of the primary row width — never squeezed by badges
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                if (badgeText != null) {
+                    QualityBadgePill(
+                        label = badgeText,
+                        isHiRes = badgeIsHiRes,
+                        isLossless = !badgeIsHiRes
+                    )
+                }
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
-                if (badgeText != null) {
-                    QualityBadgePill(label = badgeText, isHiRes = false, isLossless = true)
-                }
             }
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
-        IconButton(onClick = onClick) {
+        IconButton(
+            onClick = onPlay,
+            modifier = Modifier.size(width = 40.dp, height = 48.dp)
+        ) {
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
                 contentDescription = "播放",
@@ -1787,7 +1962,10 @@ private fun GroupedCollectionCard(
             )
         }
         Box {
-            IconButton(onClick = { menuExpanded = true }) {
+            IconButton(
+                onClick = { menuExpanded = true },
+                modifier = Modifier.size(width = 36.dp, height = 48.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.MoreVert,
                     contentDescription = "更多操作",

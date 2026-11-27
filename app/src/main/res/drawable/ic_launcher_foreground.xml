@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/img_auralis_icon_1795327222641"
+        android:drawable="@drawable/auralis_minimal_icon_1795776921259"
         android:gravity="center" />
 </layer-list>

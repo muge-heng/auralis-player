@@ -31,6 +31,7 @@ import com.example.model.PlaylistCoverMode
 import com.example.model.ReasoningEffortLevel
 import com.example.model.ScanFilterConfig
 import com.example.model.Track
+import com.example.model.TrackMetadataOverride
 import com.example.model.normalizeEqBands
 import com.example.model.snapLyricFontScale
 import kotlinx.coroutines.flow.Flow
@@ -119,6 +120,12 @@ class PreferencesRepository(private val context: Context) {
 
         // Archived Play History & Favorites (preserved when clearing audio library only)
         val TRACK_HISTORY_ARCHIVE_RAW = stringPreferencesKey("track_history_archive_raw")
+
+        // First-launch onboarding completion state
+        val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+
+        // In-app track metadata & cover art overrides (does not modify source files)
+        val TRACK_METADATA_OVERRIDES_JSON = stringPreferencesKey("track_metadata_overrides_json")
     }
 
     val darkThemeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -269,6 +276,41 @@ class PreferencesRepository(private val context: Context) {
 
     val audioBookmarksFlow: Flow<Map<String, List<AudioBookmark>>> = context.auralisDataStore.data.map { prefs ->
         parseAudioBookmarksJson(prefs[Keys.AUDIO_BOOKMARKS_JSON])
+    }
+
+    val hasCompletedOnboardingFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
+        prefs[Keys.HAS_COMPLETED_ONBOARDING] ?: false
+    }
+
+    val trackMetadataOverridesFlow: Flow<Map<String, TrackMetadataOverride>> = context.auralisDataStore.data.map { prefs ->
+        parseTrackMetadataOverridesJson(prefs[Keys.TRACK_METADATA_OVERRIDES_JSON])
+    }
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        context.auralisDataStore.edit { it[Keys.HAS_COMPLETED_ONBOARDING] = completed }
+    }
+
+    suspend fun getTrackMetadataOverridesSnapshot(): Map<String, TrackMetadataOverride> {
+        val raw = context.auralisDataStore.data.first()[Keys.TRACK_METADATA_OVERRIDES_JSON]
+        return parseTrackMetadataOverridesJson(raw)
+    }
+
+    suspend fun saveTrackMetadataOverride(override: TrackMetadataOverride) {
+        context.auralisDataStore.edit { prefs ->
+            val current = parseTrackMetadataOverridesJson(prefs[Keys.TRACK_METADATA_OVERRIDES_JSON]).toMutableMap()
+            current[override.trackId] = override
+            prefs[Keys.TRACK_METADATA_OVERRIDES_JSON] = serializeTrackMetadataOverridesJson(current)
+        }
+    }
+
+    suspend fun removeTrackMetadataOverride(trackId: String): TrackMetadataOverride? {
+        var removed: TrackMetadataOverride? = null
+        context.auralisDataStore.edit { prefs ->
+            val current = parseTrackMetadataOverridesJson(prefs[Keys.TRACK_METADATA_OVERRIDES_JSON]).toMutableMap()
+            removed = current.remove(trackId)
+            prefs[Keys.TRACK_METADATA_OVERRIDES_JSON] = serializeTrackMetadataOverridesJson(current)
+        }
+        return removed
     }
 
     suspend fun setDarkTheme(dark: Boolean) {
@@ -582,6 +624,7 @@ class PreferencesRepository(private val context: Context) {
             prefs.remove(Keys.PLAYLIST_COVER_CONFIGS_JSON)
             prefs.remove(Keys.AUDIO_BOOKMARKS_JSON)
             prefs.remove(Keys.TRACK_HISTORY_ARCHIVE_RAW)
+            prefs.remove(Keys.TRACK_METADATA_OVERRIDES_JSON)
             prefs.remove(Keys.AI_ATTACH_CATALOG_ENABLED)
             prefs.remove(Keys.AI_ATTACH_CATALOG_CUSTOMIZED)
             prefs.remove(Keys.AI_ATTACH_CATALOG_TRACK_IDS)
@@ -596,11 +639,15 @@ class PreferencesRepository(private val context: Context) {
             val keptCovers = prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON]
             val keptBookmarks = prefs[Keys.AUDIO_BOOKMARKS_JSON]
             val keptArchive = prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW]
+            val keptOverrides = prefs[Keys.TRACK_METADATA_OVERRIDES_JSON]
+            val keptOnboarding = prefs[Keys.HAS_COMPLETED_ONBOARDING]
             prefs.clear()
             if (keptCustomEq != null) prefs[Keys.EQ_CUSTOM_PRESETS_JSON] = keptCustomEq
             if (keptCovers != null) prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON] = keptCovers
             if (keptBookmarks != null) prefs[Keys.AUDIO_BOOKMARKS_JSON] = keptBookmarks
             if (keptArchive != null) prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW] = keptArchive
+            if (keptOverrides != null) prefs[Keys.TRACK_METADATA_OVERRIDES_JSON] = keptOverrides
+            if (keptOnboarding != null) prefs[Keys.HAS_COMPLETED_ONBOARDING] = keptOnboarding
         }
     }
 
@@ -900,6 +947,93 @@ class PreferencesRepository(private val context: Context) {
                 }
             }
             return result
+        }
+
+        fun serializeTrackMetadataOverridesJson(map: Map<String, TrackMetadataOverride>): String {
+            val sb = StringBuilder("MO1")
+            map.values.forEach { ov ->
+                sb.append('\n')
+                    .append(escapeBookmarkField(ov.trackId)).append('\t')
+                    .append(escapeBookmarkField(ov.title)).append('\t')
+                    .append(escapeBookmarkField(ov.artist)).append('\t')
+                    .append(escapeBookmarkField(ov.album)).append('\t')
+                    .append(escapeBookmarkField(ov.customArtworkPath ?: "")).append('\t')
+                    .append(escapeBookmarkField(ov.originalTitle)).append('\t')
+                    .append(escapeBookmarkField(ov.originalArtist)).append('\t')
+                    .append(escapeBookmarkField(ov.originalAlbum)).append('\t')
+                    .append(escapeBookmarkField(ov.originalArtworkPath ?: "")).append('\t')
+                    .append(escapeBookmarkField(ov.originalAlbumArtUri ?: ""))
+            }
+            return sb.toString()
+        }
+
+        fun parseTrackMetadataOverridesJson(raw: String?): Map<String, TrackMetadataOverride> {
+            if (raw.isNullOrBlank()) return emptyMap()
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("MO1")) {
+                val map = linkedMapOf<String, TrackMetadataOverride>()
+                trimmed.lineSequence().drop(1).forEach { line ->
+                    if (line.isBlank()) return@forEach
+                    val parts = line.split('\t')
+                    if (parts.size < 10) return@forEach
+                    val id = unescapeBookmarkField(parts[0])
+                    if (id.isBlank()) return@forEach
+                    map[id] = TrackMetadataOverride(
+                        trackId = id,
+                        title = unescapeBookmarkField(parts[1]),
+                        artist = unescapeBookmarkField(parts[2]),
+                        album = unescapeBookmarkField(parts[3]),
+                        customArtworkPath = unescapeBookmarkField(parts[4]).ifBlank { null },
+                        originalTitle = unescapeBookmarkField(parts[5]),
+                        originalArtist = unescapeBookmarkField(parts[6]),
+                        originalAlbum = unescapeBookmarkField(parts[7]),
+                        originalArtworkPath = unescapeBookmarkField(parts[8]).ifBlank { null },
+                        originalAlbumArtUri = unescapeBookmarkField(parts[9]).ifBlank { null }
+                    )
+                }
+                return map
+            }
+            // Legacy JSON array fallback
+            return runCatching {
+                val arr = JSONArray(trimmed)
+                val map = linkedMapOf<String, TrackMetadataOverride>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val id = obj.optString("trackId", "")
+                    if (id.isBlank()) continue
+                    map[id] = TrackMetadataOverride(
+                        trackId = id,
+                        title = obj.optString("title", ""),
+                        artist = obj.optString("artist", ""),
+                        album = obj.optString("album", ""),
+                        customArtworkPath = obj.optString("customArtworkPath", "").ifBlank { null },
+                        originalTitle = obj.optString("originalTitle", ""),
+                        originalArtist = obj.optString("originalArtist", ""),
+                        originalAlbum = obj.optString("originalAlbum", ""),
+                        originalArtworkPath = obj.optString("originalArtworkPath", "").ifBlank { null },
+                        originalAlbumArtUri = obj.optString("originalAlbumArtUri", "").ifBlank { null }
+                    )
+                }
+                map
+            }.getOrDefault(emptyMap())
+        }
+
+        fun applyMetadataOverridesToTracks(
+            tracks: List<Track>,
+            overrides: Map<String, TrackMetadataOverride>
+        ): List<Track> {
+            if (tracks.isEmpty() || overrides.isEmpty()) return tracks
+            return tracks.map { track ->
+                val ov = overrides[track.id] ?: return@map track
+                val hasCustomCover = !ov.customArtworkPath.isNullOrBlank()
+                track.copy(
+                    title = ov.title.ifBlank { track.title },
+                    artist = ov.artist.ifBlank { track.artist },
+                    album = ov.album.ifBlank { track.album },
+                    artworkPath = if (hasCustomCover) ov.customArtworkPath else track.artworkPath,
+                    albumArtUri = if (hasCustomCover) null else track.albumArtUri
+                )
+            }
         }
     }
 }

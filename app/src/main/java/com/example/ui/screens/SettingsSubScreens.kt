@@ -5,6 +5,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +42,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.FilterAlt
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.History
@@ -50,6 +57,7 @@ import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TrendingDown
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Vibration
@@ -80,6 +88,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -557,132 +566,126 @@ internal fun PlaybackTransitionSettingsSubPage(
                 title = "曲目衔接过渡模式",
                 subtitle = "自由挑选适合无损发烧聆听、专辑连听或氛围歌单的切歌过渡风格"
             ) {
+                var showMoreModes by remember { mutableStateOf(audioTransition.mode.isSecondary) }
+                val chevronRotation by animateFloatAsState(
+                    targetValue = if (showMoreModes) 180f else 0f,
+                    label = "more_transition_chevron"
+                )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AudioTransitionMode.entries.forEach { mode ->
-                        val selected = audioTransition.mode == mode
-                        val modeIcon = when (mode) {
-                            AudioTransitionMode.GAPLESS -> Icons.Rounded.GraphicEq
-                            AudioTransitionMode.SMOOTH_FADE -> Icons.Rounded.TrendingDown
-                            AudioTransitionMode.CROSSFADE -> Icons.Rounded.SwapHoriz
-                            AudioTransitionMode.AUTOMIX -> Icons.Rounded.AutoAwesome
-                            AudioTransitionMode.LYRIC_BRIDGE -> Icons.Rounded.Lyrics
-                            AudioTransitionMode.VINYL_BRAKE -> Icons.Rounded.Album
-                        }
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(
-                                    if (selected) RubyAccent.copy(alpha = 0.14f)
-                                    else MaterialTheme.colorScheme.surfaceContainerHigh
-                                )
-                                .border(
-                                    width = if (selected) 1.dp else 0.6.dp,
-                                    color = if (selected) RubyAccent else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                .clickable {
-                                    onUpdateAudioTransition(audioTransition.copy(mode = mode))
-                                }
-                                .padding(horizontal = 12.dp, vertical = 11.dp)
-                                .testTag("settings_transition_mode_${mode.name.lowercase()}"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(
-                                        if (selected) RubyAccent.copy(alpha = 0.20f)
-                                        else MaterialTheme.colorScheme.surfaceContainerHighest
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = modeIcon,
-                                    contentDescription = null,
-                                    tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(19.dp)
-                                )
+                    AudioTransitionMode.primaryModes.forEach { mode ->
+                        TransitionModeOptionRow(
+                            mode = mode,
+                            selected = audioTransition.mode == mode,
+                            goldAccent = goldAccent,
+                            onSelect = {
+                                onUpdateAudioTransition(audioTransition.copy(mode = mode))
                             }
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                        )
+                    }
+
+                    // Expandable "更多效果" drawer for secondary transition modes (SMOOTH_FADE, VINYL_BRAKE)
+                    val secondarySelected = audioTransition.mode.isSecondary
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (secondarySelected && !showMoreModes) RubyAccent.copy(alpha = 0.10f)
+                                else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f)
+                            )
+                            .border(
+                                width = if (secondarySelected && !showMoreModes) 0.9.dp else 0.6.dp,
+                                color = if (secondarySelected && !showMoreModes) RubyAccent.copy(alpha = 0.55f)
+                                else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { showMoreModes = !showMoreModes }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("settings_transition_more_effects_toggle"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = null,
+                                tint = if (secondarySelected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = mode.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    if (mode == AudioTransitionMode.AUTOMIX) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(goldAccent.copy(alpha = 0.16f))
-                                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "智能自适应",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = goldAccent,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    } else if (mode == AudioTransitionMode.LYRIC_BRIDGE) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(RubyAccent.copy(alpha = 0.16f))
-                                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "跳过前尾奏",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = RubyAccent,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    } else if (mode == AudioTransitionMode.CROSSFADE) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(EmeraldLossless.copy(alpha = 0.16f))
-                                                .padding(horizontal = 6.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "等功率叠加",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = EmeraldLossless,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
+                                Text(
+                                    text = "更多效果",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (secondarySelected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(RubyAccent.copy(alpha = 0.16f))
+                                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = audioTransition.mode.shortLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = RubyAccent,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
                                 }
-                                Text(
-                                    text = mode.subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis
+                            }
+                            Text(
+                                text = "柔和淡出淡入 · 黑胶缓停减速",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Rounded.ExpandMore,
+                            contentDescription = if (showMoreModes) "收起更多效果" else "展开更多效果",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .rotate(chevronRotation)
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = showMoreModes,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 2.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            AudioTransitionMode.secondaryModes.forEach { mode ->
+                                TransitionModeOptionRow(
+                                    mode = mode,
+                                    selected = audioTransition.mode == mode,
+                                    goldAccent = goldAccent,
+                                    onSelect = {
+                                        onUpdateAudioTransition(audioTransition.copy(mode = mode))
+                                    }
                                 )
                             }
-                            Icon(
-                                imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                                contentDescription = if (selected) "已选中" else "未选中",
-                                tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                                modifier = Modifier.size(20.dp)
-                            )
                         }
                     }
                 }
@@ -786,6 +789,134 @@ internal fun PlaybackTransitionSettingsSubPage(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TransitionModeOptionRow(
+    mode: AudioTransitionMode,
+    selected: Boolean,
+    goldAccent: Color,
+    onSelect: () -> Unit
+) {
+    val modeIcon = when (mode) {
+        AudioTransitionMode.GAPLESS -> Icons.Rounded.GraphicEq
+        AudioTransitionMode.SMOOTH_FADE -> Icons.Rounded.TrendingDown
+        AudioTransitionMode.CROSSFADE -> Icons.Rounded.SwapHoriz
+        AudioTransitionMode.AUTOMIX -> Icons.Rounded.AutoAwesome
+        AudioTransitionMode.LYRIC_BRIDGE -> Icons.Rounded.Lyrics
+        AudioTransitionMode.VINYL_BRAKE -> Icons.Rounded.Album
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (selected) RubyAccent.copy(alpha = 0.14f)
+                else MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+            .border(
+                width = if (selected) 1.dp else 0.6.dp,
+                color = if (selected) RubyAccent else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onSelect)
+            .padding(horizontal = 12.dp, vertical = 11.dp)
+            .testTag("settings_transition_mode_${mode.name.lowercase()}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    if (selected) RubyAccent.copy(alpha = 0.20f)
+                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = modeIcon,
+                contentDescription = null,
+                tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = mode.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (mode == AudioTransitionMode.AUTOMIX) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(goldAccent.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "智能自适应",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = goldAccent,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else if (mode == AudioTransitionMode.LYRIC_BRIDGE) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(RubyAccent.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "跳过前尾奏",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = RubyAccent,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else if (mode == AudioTransitionMode.CROSSFADE) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(EmeraldLossless.copy(alpha = 0.16f))
+                            .padding(horizontal = 6.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            text = "等功率叠加",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = EmeraldLossless,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            Text(
+                text = mode.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(
+            imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+            contentDescription = if (selected) "已选中" else "未选中",
+            tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 

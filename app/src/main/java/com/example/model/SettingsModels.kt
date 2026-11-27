@@ -20,6 +20,7 @@ enum class LibraryFilterFormat(val label: String) {
 }
 
 enum class LibrarySortOption(val label: String) {
+    SMART("智能排序"),
     RECENT("最近添加"),
     TITLE("曲名 A-Z"),
     ARTIST("艺术家"),
@@ -314,19 +315,14 @@ enum class AudioTransitionMode(
     val label: String,
     val shortLabel: String,
     val subtitle: String,
-    val supportsDurationSlider: Boolean
+    val supportsDurationSlider: Boolean,
+    val isSecondary: Boolean = false
 ) {
     GAPLESS(
         label = "无缝直连 (Gapless)",
         shortLabel = "无缝直连",
         subtitle = "零衰减原生无缝衔接，完整保留现场专辑、交响乐与概念专辑的连贯听感",
         supportsDurationSlider = false
-    ),
-    SMOOTH_FADE(
-        label = "柔和淡出淡入",
-        shortLabel = "淡出淡入",
-        subtitle = "曲尾以 S 曲线平滑淡出至静谧，随后新曲丝滑淡入，两首歌绝不混叠",
-        supportsDurationSlider = true
     ),
     CROSSFADE(
         label = "等功率交叉淡化",
@@ -346,14 +342,28 @@ enum class AudioTransitionMode(
         subtitle = "末句唱毕后自动渐弱淡出，并精准衔接至下一首第一句歌词前渐强入歌，大幅缩短无词间奏；任一首缺词时自动退化为智能声场混接",
         supportsDurationSlider = true
     ),
+    SMOOTH_FADE(
+        label = "柔和淡出淡入",
+        shortLabel = "淡出淡入",
+        subtitle = "曲尾以 S 曲线平滑淡出至静谧，随后新曲丝滑淡入，两首歌绝不混叠",
+        supportsDurationSlider = true,
+        isSecondary = true
+    ),
     VINYL_BRAKE(
         label = "黑胶缓停过渡",
         shortLabel = "黑胶缓停",
         subtitle = "模拟黑胶唱机离合减速慢刹降调并轻柔收尾，随即干脆切入下一首曲目",
-        supportsDurationSlider = false
+        supportsDurationSlider = false,
+        isSecondary = true
     );
 
     companion object {
+        val primaryModes: List<AudioTransitionMode>
+            get() = entries.filter { !it.isSecondary }
+
+        val secondaryModes: List<AudioTransitionMode>
+            get() = entries.filter { it.isSecondary }
+
         fun fromStored(raw: String?): AudioTransitionMode {
             if (raw.isNullOrBlank()) return GAPLESS
             return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: GAPLESS
@@ -382,6 +392,23 @@ data class ArchivedTrackRecord(
     val lastPlayedAt: Long,
     val isFavorite: Boolean,
     val isGeneralAudio: Boolean
+)
+
+/**
+ * In-app metadata & cover art override for a track. Stored locally without modifying
+ * the underlying source audio file, preserving original values for 1-tap restore.
+ */
+data class TrackMetadataOverride(
+    val trackId: String,
+    val title: String,
+    val artist: String,
+    val album: String,
+    val customArtworkPath: String? = null,
+    val originalTitle: String,
+    val originalArtist: String,
+    val originalAlbum: String,
+    val originalArtworkPath: String? = null,
+    val originalAlbumArtUri: String? = null
 )
 
 /**

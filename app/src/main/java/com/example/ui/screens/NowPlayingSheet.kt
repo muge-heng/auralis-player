@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -266,7 +267,10 @@ fun NowPlayingSheet(
     onQuickOnlineLyricMatch: (Track) -> Unit,
     onOpenEqualizer: () -> Unit,
     onOpenAiStudio: () -> Unit,
-    onScrubHaptic: () -> Unit
+    onScrubHaptic: () -> Unit,
+    hasMetadataOverride: Boolean = false,
+    onSaveTrackMetadata: (Track, String, String, String, Uri?, Boolean) -> Unit = { _, _, _, _, _, _ -> },
+    onRestoreTrackMetadata: (Track) -> Unit = {}
 ) {
     val track = playbackState.currentTrack ?: return
     val isGeneralAudio = track.isGeneralAudio
@@ -498,6 +502,9 @@ fun NowPlayingSheet(
                                         albumArtUri = track.albumArtUri,
                                         contentDescription = stringResource(R.string.cd_album_art),
                                         cornerRadius = 9.dp,
+                                        decodeSizePx = 256,
+                                        holdLastArtwork = true,
+                                        isGeneralAudio = isGeneralAudio,
                                         modifier = Modifier.size(40.dp)
                                     )
                                 }
@@ -1269,6 +1276,9 @@ fun NowPlayingSheet(
                     albumArtUri = track.albumArtUri,
                     contentDescription = track.title,
                     cornerRadius = cornerDp,
+                    decodeSizePx = 768,
+                    holdLastArtwork = true,
+                    isGeneralAudio = isGeneralAudio,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -1346,7 +1356,12 @@ fun NowPlayingSheet(
                 { onPromoteGeneralAudioToMusic(track) }
             } else {
                 null
-            }
+            },
+            hasMetadataOverride = hasMetadataOverride,
+            onSaveMetadata = { title, artist, album, coverUri, clearCover ->
+                onSaveTrackMetadata(track, title, artist, album, coverUri, clearCover)
+            },
+            onRestoreMetadata = { onRestoreTrackMetadata(track) }
         )
     }
 
@@ -1432,8 +1447,17 @@ private fun ShuffleOrderToggleButton(
     inactiveInk: Color,
     onToggle: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
-    val spinRotation = remember { Animatable(0f) }
+    // Integer spin counter guarantees the spring target is ALWAYS an exact multiple of 360°,
+    // so rapid consecutive taps can never leave the arrow resting at a crooked intermediate angle.
+    var spinCount by remember { mutableIntStateOf(0) }
+    val spinRotation by animateFloatAsState(
+        targetValue = spinCount * 360f,
+        animationSpec = spring(
+            dampingRatio = 0.64f,
+            stiffness = 215f
+        ),
+        label = "shuffle_spin_rotation"
+    )
 
     val iconTint by animateColorAsState(
         targetValue = if (shuffleEnabled) activeInk else inactiveInk,
@@ -1451,24 +1475,15 @@ private fun ShuffleOrderToggleButton(
             .size(48.dp)
             .clip(CircleShape)
             .bouncyClickable(pressedScale = 0.84f) {
+                spinCount += 1
                 onToggle()
-                scope.launch {
-                    val target = spinRotation.value + 360f
-                    spinRotation.animateTo(
-                        targetValue = target,
-                        animationSpec = spring(
-                            dampingRatio = 0.64f,
-                            stiffness = 215f
-                        )
-                    )
-                }
             }
             .testTag("transport_shuffle"),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier.graphicsLayer {
-                rotationZ = spinRotation.value
+                rotationZ = spinRotation
             },
             contentAlignment = Alignment.Center
         ) {
@@ -1886,6 +1901,9 @@ private fun CoverArtworkStage(
                         albumArtUri = activeTrack.albumArtUri,
                         contentDescription = stringResource(R.string.cd_album_art),
                         cornerRadius = 24.dp,
+                        decodeSizePx = 768,
+                        holdLastArtwork = true,
+                        isGeneralAudio = activeTrack.isGeneralAudio,
                         modifier = Modifier.fillMaxSize()
                     )
                     if (visualEffectsEnhanced) {

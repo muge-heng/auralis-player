@@ -507,20 +507,21 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 10)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 11)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -900,10 +901,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v0.9.9 is active
+        // Liquid Glass is the default nav bar & v1.0.0 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -1342,6 +1343,144 @@ class ExampleUnitTest {
                 trackDurationMs = 210_000L
             )
         )
+    }
+
+    @Test
+    fun transitionModesExposeReorderedPrimaryAndCollapsedSecondaryLists() {
+        assertEquals(
+            listOf(
+                com.example.model.AudioTransitionMode.GAPLESS,
+                com.example.model.AudioTransitionMode.CROSSFADE,
+                com.example.model.AudioTransitionMode.AUTOMIX,
+                com.example.model.AudioTransitionMode.LYRIC_BRIDGE
+            ),
+            com.example.model.AudioTransitionMode.primaryModes
+        )
+        assertEquals(
+            listOf(
+                com.example.model.AudioTransitionMode.SMOOTH_FADE,
+                com.example.model.AudioTransitionMode.VINYL_BRAKE
+            ),
+            com.example.model.AudioTransitionMode.secondaryModes
+        )
+        assertTrue(com.example.model.AudioTransitionMode.SMOOTH_FADE.isSecondary)
+        assertTrue(com.example.model.AudioTransitionMode.VINYL_BRAKE.isSecondary)
+        assertFalse(com.example.model.AudioTransitionMode.CROSSFADE.isSecondary)
+    }
+
+    @Test
+    fun smartLibrarySorterBalancesAffinityAntiFatigueDiversityAndDynamicRefresh() {
+        val now = 1_770_000_000_000L
+        fun makeTrack(
+            id: String,
+            artist: String,
+            favorite: Boolean = false,
+            playCount: Int = 0,
+            lastPlayedAt: Long = 0L,
+            dateAddedSec: Long = (now / 1000L) - 30 * 86_400L,
+            isHiRes: Boolean = false
+        ) = Track(
+            id = id,
+            contentUri = "content://media/$id",
+            title = "Track $id",
+            artist = artist,
+            album = "Album $id",
+            durationMs = 210_000L,
+            sizeBytes = 12_000_000L,
+            folderPath = "Music",
+            fileName = "$id.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC",
+            isFavorite = favorite,
+            playCount = playCount,
+            lastPlayedAt = lastPlayedAt,
+            dateAddedSec = dateAddedSec,
+            isLossless = true,
+            isHiRes = isHiRes
+        )
+
+        val tracks = listOf(
+            makeTrack("fav_rediscover", "Artist A", favorite = true, playCount = 12, lastPlayedAt = now - 5L * 86_400_000L, isHiRes = true),
+            makeTrack("fav_just_played", "Artist B", favorite = true, playCount = 12, lastPlayedAt = now - 5L * 60_000L),
+            makeTrack("a2", "Artist A", favorite = true, playCount = 10, lastPlayedAt = now - 4L * 86_400_000L),
+            makeTrack("c1", "Artist C", favorite = false, playCount = 3, lastPlayedAt = now - 6L * 86_400_000L),
+            makeTrack("d1", "Artist D", favorite = false, playCount = 1, lastPlayedAt = 0L, dateAddedSec = (now / 1000L) - 86_400L),
+            makeTrack("e1", "Artist E", favorite = false, playCount = 0, lastPlayedAt = 0L)
+        )
+
+        val sortedSeed1 = com.example.model.SmartLibrarySorter.sort(tracks, sessionSeed = 101L, nowMs = now)
+        val sortedSeed1Repeat = com.example.model.SmartLibrarySorter.sort(tracks, sessionSeed = 101L, nowMs = now)
+        assertEquals(sortedSeed1.map { it.id }, sortedSeed1Repeat.map { it.id })
+        assertEquals(tracks.size, sortedSeed1.size)
+
+        // Favorite rediscovered track should outrank the track played 5 minutes ago (anti-fatigue cooldown)
+        val idxRediscover = sortedSeed1.indexOfFirst { it.id == "fav_rediscover" }
+        val idxJustPlayed = sortedSeed1.indexOfFirst { it.id == "fav_just_played" }
+        assertTrue("Expected rediscovered favorite ($idxRediscover) ahead of just-played ($idxJustPlayed)", idxRediscover < idxJustPlayed)
+
+        // Different session seeds produce dynamic re-orderings across a larger homogeneous pool
+        val pool = (1..12).map { i -> makeTrack("p$i", "Artist $i", favorite = i % 3 == 0, playCount = i % 4) }
+        val orderA = com.example.model.SmartLibrarySorter.sort(pool, sessionSeed = 11L, nowMs = now).map { it.id }
+        val orderB = com.example.model.SmartLibrarySorter.sort(pool, sessionSeed = 999_999L, nowMs = now).map { it.id }
+        assertTrue("Smart sort should refresh dynamically when sessionSeed changes", orderA != orderB)
+    }
+
+    @Test
+    fun trackMetadataOverrideRoundTripsAndAppliesCleanly() {
+        val originalTrack = Track(
+            id = "t_meta_1",
+            contentUri = "content://media/meta1",
+            title = "01_raw_filename",
+            artist = "未知艺术家",
+            album = "未知专辑",
+            durationMs = 200_000L,
+            sizeBytes = 10_000_000L,
+            folderPath = "Music",
+            fileName = "01_raw_filename.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC",
+            artworkPath = "/cache/orig.jpg",
+            albumArtUri = "content://orig/art"
+        )
+        val overrides = mapOf(
+            "t_meta_1" to com.example.model.TrackMetadataOverride(
+                trackId = "t_meta_1",
+                title = "流明 (Lumen)",
+                artist = "星瞳",
+                album = "星·征途",
+                customArtworkPath = "/files/custom_covers/custom_t_meta_1.jpg",
+                originalTitle = originalTrack.title,
+                originalArtist = originalTrack.artist,
+                originalAlbum = originalTrack.album,
+                originalArtworkPath = originalTrack.artworkPath,
+                originalAlbumArtUri = originalTrack.albumArtUri
+            )
+        )
+        val encoded = com.example.data.local.PreferencesRepository.serializeTrackMetadataOverridesJson(overrides)
+        val decoded = com.example.data.local.PreferencesRepository.parseTrackMetadataOverridesJson(encoded)
+        assertEquals(1, decoded.size)
+        val restoredOverride = decoded["t_meta_1"]!!
+        assertEquals("流明 (Lumen)", restoredOverride.title)
+        assertEquals("星瞳", restoredOverride.artist)
+        assertEquals("/files/custom_covers/custom_t_meta_1.jpg", restoredOverride.customArtworkPath)
+        assertEquals("01_raw_filename", restoredOverride.originalTitle)
+
+        val applied = com.example.data.local.PreferencesRepository.applyMetadataOverridesToTracks(
+            listOf(originalTrack),
+            decoded
+        ).single()
+        assertEquals("流明 (Lumen)", applied.title)
+        assertEquals("星瞳", applied.artist)
+        assertEquals("星·征途", applied.album)
+        assertEquals("/files/custom_covers/custom_t_meta_1.jpg", applied.artworkPath)
+        assertNull(applied.albumArtUri)
+
+        // Artwork cache key stays deterministic for the same model and decode bucket
+        val k1 = com.example.ui.components.buildTrackArtworkCacheKey("/cache/cover.jpg", null, 256)
+        val k2 = com.example.ui.components.buildTrackArtworkCacheKey("/cache/cover.jpg", null, 256)
+        val kHi = com.example.ui.components.buildTrackArtworkCacheKey("/cache/cover.jpg", null, 768)
+        assertEquals(k1, k2)
+        assertTrue(k1 != kHi)
     }
 }
 

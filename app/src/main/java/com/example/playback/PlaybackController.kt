@@ -1437,10 +1437,15 @@ class PlaybackController(
     }
 
     fun toggleShuffle() {
-        val next = !_state.value.shuffleEnabled
+        setShuffleEnabled(!_state.value.shuffleEnabled)
+    }
+
+    fun setShuffleEnabled(enabled: Boolean) {
+        if (_state.value.shuffleEnabled == enabled && controller?.shuffleModeEnabled == enabled) return
         DualDeckServiceBridge.current?.clearStandbyPreCue()
-        controller?.shuffleModeEnabled = next
-        _state.update { it.copy(shuffleEnabled = next) }
+        controller?.shuffleModeEnabled = enabled
+        DualDeckServiceBridge.current?.activeDeck?.shuffleModeEnabled = enabled
+        _state.update { it.copy(shuffleEnabled = enabled) }
     }
 
     fun cycleRepeatMode() {

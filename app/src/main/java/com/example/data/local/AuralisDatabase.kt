@@ -62,6 +62,16 @@ interface TrackDao {
     @Query("UPDATE tracks SET isGeneralAudio = :isGeneralAudio WHERE id IN (:ids)")
     suspend fun setGeneralAudioForIds(ids: List<String>, isGeneralAudio: Boolean)
 
+    @Query("UPDATE tracks SET title = :title, artist = :artist, album = :album, artworkPath = :artworkPath, albumArtUri = :albumArtUri WHERE id = :trackId")
+    suspend fun updateTrackMetadata(
+        trackId: String,
+        title: String,
+        artist: String,
+        album: String,
+        artworkPath: String?,
+        albumArtUri: String?
+    )
+
     @Query("UPDATE tracks SET lastPlayedAt = 0 WHERE id IN (:ids)")
     suspend fun clearPlayHistoryForIds(ids: List<String>)
 
