@@ -109,6 +109,25 @@ data class ScanFilterConfig(
         return passMin && passMax
     }
 
+    /**
+     * Strict logical AND evaluation across all enabled scan quality gates:
+     * - [requireMetadata]: track must have at least one valid metadata tag or verified cover art.
+     * - [requireArtist]: track must have a valid artist tag (not blank / unknown).
+     * - [requireAlbumOrArt]: strictly requires a verified embedded cover artwork image
+     *   (never satisfied by MediaStore's folder-derived album name alone).
+     * All checked options must be satisfied simultaneously (AND, never OR).
+     */
+    fun passesStrictCriteria(
+        hasAnyMeta: Boolean,
+        hasArtist: Boolean,
+        hasRealArtwork: Boolean
+    ): Boolean {
+        if (requireMetadata && !hasAnyMeta) return false
+        if (requireArtist && !hasArtist) return false
+        if (requireAlbumOrArt && !hasRealArtwork) return false
+        return true
+    }
+
     fun formatDurationRangeLabel(): String {
         val norm = normalized()
         return when {

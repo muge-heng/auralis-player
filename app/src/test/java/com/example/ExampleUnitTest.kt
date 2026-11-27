@@ -507,22 +507,23 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 12)
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[11].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 13)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[11].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[12].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -902,10 +903,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v1.0.1 is active
+        // Liquid Glass is the default nav bar & v1.0.2 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -1521,7 +1522,72 @@ class ExampleUnitTest {
         val originOs = com.example.util.DefaultAudioPlayerHelper.detectDeviceRomGuide("vivo", "iQOO")
         assertTrue(originOs.romDisplayName.contains("OriginOS"))
     }
+
+    @Test
+    fun strictScanFilterUsesAndLogicForEmbeddedCoverAndValidatesArtworkBytesAndDemotion() {
+        // 1. Strict AND: checking requireAlbumOrArt strictly requires real artwork (album/artist alone NEVER pass)
+        val requireCoverOnly = com.example.model.ScanFilterConfig(requireAlbumOrArt = true)
+        assertFalse(
+            "Coverless track with valid artist & folder-derived album MUST fail when requireAlbumOrArt is true",
+            requireCoverOnly.passesStrictCriteria(hasAnyMeta = true, hasArtist = true, hasRealArtwork = false)
+        )
+        assertTrue(
+            requireCoverOnly.passesStrictCriteria(hasAnyMeta = true, hasArtist = false, hasRealArtwork = true)
+        )
+
+        // 2. Strict AND across all three switches: every checked condition must hold simultaneously
+        val requireAll = com.example.model.ScanFilterConfig(
+            requireMetadata = true,
+            requireArtist = true,
+            requireAlbumOrArt = true
+        )
+        assertFalse(requireAll.passesStrictCriteria(hasAnyMeta = true, hasArtist = true, hasRealArtwork = false))
+        assertFalse(requireAll.passesStrictCriteria(hasAnyMeta = true, hasArtist = false, hasRealArtwork = true))
+        assertFalse(requireAll.passesStrictCriteria(hasAnyMeta = false, hasArtist = true, hasRealArtwork = true))
+        assertTrue(requireAll.passesStrictCriteria(hasAnyMeta = true, hasArtist = true, hasRealArtwork = true))
+
+        // 3. Artwork byte validation accepts genuine JPEG/PNG headers and rejects empty/corrupt APIC garbage
+        val validJpeg = ByteArray(128).also {
+            it[0] = 0xFF.toByte(); it[1] = 0xD8.toByte(); it[2] = 0xFF.toByte()
+        }
+        val validPng = ByteArray(128).also {
+            it[0] = 0x89.toByte(); it[1] = 0x50; it[2] = 0x4E; it[3] = 0x47
+        }
+        val corruptBytes = ByteArray(128) { 0x00 }
+        val tinyJpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte())
+        assertTrue(MetadataExtractor.isValidArtworkBytes(validJpeg))
+        assertTrue(MetadataExtractor.isValidArtworkBytes(validPng))
+        assertFalse(MetadataExtractor.isValidArtworkBytes(corruptBytes))
+        assertFalse(MetadataExtractor.isValidArtworkBytes(tinyJpeg))
+        assertFalse(MetadataExtractor.isValidArtworkBytes(null))
+
+        // 4. TrackDeduplicator with syncGeneralAudioZone = true demotes existing coverless music track to general audio
+        val existingCoverlessMusic = Track(
+            id = "ms_42",
+            contentUri = "content://media/42",
+            title = "No Cover Song",
+            artist = "Artist",
+            album = "Download",
+            durationMs = 190_000L,
+            sizeBytes = 4_000_000L,
+            folderPath = "Download",
+            fileName = "nocover.mp3",
+            mimeType = "audio/mpeg",
+            codecLabel = "MP3",
+            artworkPath = null,
+            isGeneralAudio = false
+        )
+        val rescannedDemoted = existingCoverlessMusic.copy(isGeneralAudio = true)
+        val syncedAnalysis = com.example.data.scanner.TrackDeduplicator.analyzeImportCandidates(
+            incoming = listOf(rescannedDemoted),
+            existing = listOf(existingCoverlessMusic),
+            syncGeneralAudioZone = true
+        )
+        assertEquals(1, syncedAnalysis.updatedExistingTracks.size)
+        assertTrue(syncedAnalysis.updatedExistingTracks.first().isGeneralAudio)
+    }
 }
+
 
 
 

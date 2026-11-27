@@ -87,7 +87,7 @@ class MetadataExtractor(private val context: Context) {
             }
 
             val artBytes = retriever.embeddedPicture
-            if (artBytes != null && artBytes.isNotEmpty()) {
+            if (artBytes != null && isValidArtworkBytes(artBytes)) {
                 artworkPath = persistArtwork(uri.toString(), artBytes)
             }
         } catch (e: Exception) {
@@ -166,6 +166,38 @@ class MetadataExtractor(private val context: Context) {
     }
 
     companion object {
+        const val MIN_VALID_ARTWORK_BYTES = 64
+
+        /**
+         * Verifies that extracted embedded artwork bytes represent a real image file
+         * (JPEG, PNG, WebP, GIF, or BMP) rather than empty/corrupt ID3 APIC garbage.
+         */
+        fun isValidArtworkBytes(bytes: ByteArray?): Boolean {
+            if (bytes == null || bytes.size < MIN_VALID_ARTWORK_BYTES) return false
+            val b0 = bytes[0].toInt() and 0xFF
+            val b1 = bytes[1].toInt() and 0xFF
+            val b2 = bytes[2].toInt() and 0xFF
+            val b3 = bytes[3].toInt() and 0xFF
+            val isJpeg = b0 == 0xFF && b1 == 0xD8 && b2 == 0xFF
+            val isPng = b0 == 0x89 && b1 == 0x50 && b2 == 0x4E && b3 == 0x47
+            val isGif = b0 == 'G'.code && b1 == 'I'.code && b2 == 'F'.code && b3 == '8'.code
+            val isBmp = b0 == 'B'.code && b1 == 'M'.code
+            val isWebp = bytes.size >= 12 &&
+                b0 == 'R'.code && b1 == 'I'.code && b2 == 'F'.code && b3 == 'F'.code &&
+                bytes[8].toInt() == 'W'.code && bytes[9].toInt() == 'E'.code &&
+                bytes[10].toInt() == 'B'.code && bytes[11].toInt() == 'P'.code
+            return isJpeg || isPng || isWebp || isGif || isBmp
+        }
+
+        /**
+         * Verifies that a cached artwork path points to an existing, non-trivial image file on disk.
+         */
+        fun hasVerifiedArtworkFile(artworkPath: String?): Boolean {
+            if (artworkPath.isNullOrBlank()) return false
+            val file = File(artworkPath)
+            return file.exists() && file.isFile && file.length() >= MIN_VALID_ARTWORK_BYTES
+        }
+
         /**
          * Returns true when an audio file lacks sufficient evidence of being a structured music track
          * (e.g. voice memos, downloaded clips, sound effects with no artist/album/artwork/genre tags).
@@ -372,13 +404,14 @@ class MetadataExtractor(private val context: Context) {
     }
 
     private fun persistArtwork(key: String, bytes: ByteArray): String? {
+        if (!isValidArtworkBytes(bytes)) return null
         return try {
             val fileName = "${sha256(key).take(20)}.jpg"
             val outFile = File(artCacheDir, fileName)
-            if (!outFile.exists() || outFile.length() == 0L) {
+            if (!outFile.exists() || outFile.length() < MIN_VALID_ARTWORK_BYTES) {
                 FileOutputStream(outFile).use { it.write(bytes) }
             }
-            outFile.absolutePath
+            outFile.absolutePath.takeIf { outFile.exists() && outFile.length() >= MIN_VALID_ARTWORK_BYTES }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to cache artwork: ${e.message}")
             null

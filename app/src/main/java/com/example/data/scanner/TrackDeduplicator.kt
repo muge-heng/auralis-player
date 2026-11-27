@@ -259,7 +259,8 @@ object TrackDeduplicator {
      */
     fun analyzeImportCandidates(
         incoming: List<Track>,
-        existing: List<Track>
+        existing: List<Track>,
+        syncGeneralAudioZone: Boolean = false
     ): ImportDedupAnalysis {
         val existingById = existing.associateBy { it.id }
         val pool = existing.toMutableList()
@@ -272,12 +273,18 @@ object TrackDeduplicator {
         for (candidate in incoming) {
             val exactSameId = existingById[candidate.id]
             if (exactSameId != null) {
-                // Existing DB entry refreshed by MediaStore scan — preserve user state
+                // Existing DB entry refreshed by MediaStore scan — preserve user state,
+                // while allowing stricter scan filters to demote non-compliant tracks to General Audio.
+                val resolvedGeneralAudio = if (syncGeneralAudioZone && candidate.isGeneralAudio) {
+                    true
+                } else {
+                    exactSameId.isGeneralAudio
+                }
                 val refreshed = candidate.copy(
                     playCount = maxOf(exactSameId.playCount, candidate.playCount),
                     lastPlayedAt = maxOf(exactSameId.lastPlayedAt, candidate.lastPlayedAt),
                     isFavorite = exactSameId.isFavorite || candidate.isFavorite,
-                    isGeneralAudio = exactSameId.isGeneralAudio
+                    isGeneralAudio = resolvedGeneralAudio
                 )
                 if (refreshed != exactSameId) {
                     updatedExisting.add(refreshed)

@@ -14,8 +14,7 @@ import java.nio.ByteOrder
 
 data class DeviceRomGuide(
     val romDisplayName: String,
-    val settingsPathHint: String,
-    val clearDefaultHint: String
+    val settingsPathHint: String
 )
 
 sealed interface AudioDefaultStatus {
@@ -34,18 +33,18 @@ sealed interface DefaultPickerLaunchResult {
 /**
  * Chinese-Android-aware helper for configuring Auralis as the system default audio player.
  *
- * Why we deliberately avoid Google's ACTION_MANAGE_DEFAULT_APPS_SETTINGS and
- * ACTION_APP_OPEN_BY_DEFAULT_SETTINGS:
- * - ACTION_APP_OPEN_BY_DEFAULT_SETTINGS only configures web App Links (http/https), NOT audio files.
- * - ACTION_MANAGE_DEFAULT_APPS_SETTINGS opens AOSP/Google's 6-role screen (Browser/Phone/SMS/Home/
- *   Assistant/Caller ID) which lacks a "Default Music" entry on Android 10+ and Chinese ROMs.
+ * Deliberately avoided intents (all wrong on Chinese Android ROMs):
+ * - ACTION_APP_OPEN_BY_DEFAULT_SETTINGS: only configures web App Links (http/https), NOT audio.
+ * - ACTION_MANAGE_DEFAULT_APPS_SETTINGS: Google's 6-role screen, lacks a "Default Music" entry.
+ * - ACTION_APPLICATION_SETTINGS / ACTION_MANAGE_APPLICATIONS_SETTINGS: opens "应用管理"
+ *   (the installed-apps list), which is a SIBLING of "默认应用", one level too deep!
+ * - ACTION_APPLICATION_DETAILS_SETTINGS on rival music apps: blocked or ineffective on Chinese ROMs.
  *
  * Instead, this helper provides:
  * 1. Direct system audio "Open with -> Always" picker via a silent probe audio URI when no default
- *    player is locked (with live detection if another player currently holds the lock).
- * 2. Safe OEM-first jump into the Chinese ROM's real "应用 / 默认应用管理" hub (falling back cleanly
- *    to Settings.ACTION_APPLICATION_SETTINGS, never App Links or Google's stripped role screen).
- * 3. Direct App Info jump for clearing an existing default music player's lock.
+ *    player is locked.
+ * 2. Safe jump directly into the OEM's Default Apps page or the parent "应用" hub (where "应用管理"
+ *    and "默认应用" appear side-by-side), falling back cleanly to top-level Settings.ACTION_SETTINGS.
  */
 object DefaultAudioPlayerHelper {
 
@@ -67,57 +66,49 @@ object DefaultAudioPlayerHelper {
             m.contains("oppo") || m.contains("oneplus") || m.contains("realme") || m.contains("oplus") -> {
                 DeviceRomGuide(
                     romDisplayName = "ColorOS / 一加 / 真我",
-                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐（若无独立音乐项，可在系统「文件管理」点按任意音乐文件，选择 Auralis 并点选「始终」）",
-                    clearDefaultHint = "若当前已绑定系统音乐或其他播放器，可先进入其「应用详情 → 默认打开 → 清除默认设置」，再回来唤起选择。"
+                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐（注意：「默认应用」与「应用管理」为同级菜单，位于「应用」页面内）"
                 )
             }
             m.contains("xiaomi") || m.contains("redmi") || m.contains("poco") -> {
                 DeviceRomGuide(
                     romDisplayName = "澎湃OS / MIUI",
-                    settingsPathHint = "系统设置 → 应用设置 → 应用管理 → 右上角「⋮」→ 其他设置 → 默认应用设置 → 音乐",
-                    clearDefaultHint = "也可在「应用管理」中找到当前默认音乐应用，点击底部「清除默认操作」，再回来唤起音频打开方式。"
+                    settingsPathHint = "系统设置 → 应用设置 → 默认应用设置 → 音乐（部分版本在「应用管理」右上角「⋮」→ 其他设置 → 默认应用设置）"
                 )
             }
             m.contains("huawei") -> {
                 DeviceRomGuide(
                     romDisplayName = "鸿蒙 / EMUI",
-                    settingsPathHint = "系统设置 → 应用和服务 → 默认应用 → 音乐（或点击「更多默认应用」选择音频）",
-                    clearDefaultHint = "若已默认绑定华为音乐或其他播放器，可前往其「应用信息 → 默认打开 → 清除默认设置」后再重新指派。"
+                    settingsPathHint = "系统设置 → 应用和服务 → 默认应用 → 音乐（或点击「更多默认应用」选择音频）"
                 )
             }
             m.contains("honor") -> {
                 DeviceRomGuide(
                     romDisplayName = "荣耀 MagicOS",
-                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐（或点击「更多默认应用」配置音频）",
-                    clearDefaultHint = "若当前由其他播放器接管，可进入其应用详情清除默认设置后，再唤起系统音频打开方式选择 Auralis。"
+                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐（或点击「更多默认应用」配置音频）"
                 )
             }
             m.contains("vivo") || m.contains("iqoo") -> {
                 DeviceRomGuide(
                     romDisplayName = "OriginOS / FuntouchOS",
-                    settingsPathHint = "系统设置 → 应用与权限 → 权限管理 → 默认应用设置 → 音乐",
-                    clearDefaultHint = "若当前已有默认音乐应用，可进入其应用详情点击「默认打开 → 清除默认设置」后重新选择 Auralis。"
+                    settingsPathHint = "系统设置 → 应用与权限 → 默认应用设置 → 音乐（或权限管理 → 默认应用设置）"
                 )
             }
             m.contains("meizu") -> {
                 DeviceRomGuide(
                     romDisplayName = "Flyme",
-                    settingsPathHint = "系统设置 → 应用管理 → 默认应用 → 音乐",
-                    clearDefaultHint = "若当前已绑定其他音乐应用，清除其默认打开方式后即可选择 Auralis。"
+                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐"
                 )
             }
             m.contains("samsung") -> {
                 DeviceRomGuide(
                     romDisplayName = "三星 One UI",
-                    settingsPathHint = "系统设置 → 应用程序 → 找到当前音乐应用 → 设为默认 → 清除默认设置，随后在文件管理器点击音频选 Auralis「始终」",
-                    clearDefaultHint = "清除原音乐应用的默认设置后，点击任意音频即可将 Auralis 设为始终打开。"
+                    settingsPathHint = "系统设置 → 应用程序 → 选择默认应用程序（或在「文件管理」点选任意音频后选 Auralis「始终」）"
                 )
             }
             else -> {
                 DeviceRomGuide(
                     romDisplayName = "Android 系统",
-                    settingsPathHint = "进入系统「应用管理」调整默认音乐应用，或在文件管理器中点击任意音频文件，选择 Auralis 并点选「始终」",
-                    clearDefaultHint = "如果系统已自动用其他播放器打开音频，请先进入该播放器应用详情清除默认设置。"
+                    settingsPathHint = "系统设置 → 应用 → 默认应用 → 音乐（或在系统文件管理器点击任意音频文件，选择 Auralis 并点选「始终」）"
                 )
             }
         }
@@ -172,7 +163,7 @@ object DefaultAudioPlayerHelper {
 
     /**
      * Triggers the native system "Open audio with... (Always / Just once)" picker when no default
-     * music app is locked. Never silently launches a rival music player if one is already locked.
+     * music app is locked. Never launches a rival music player or rival app-details screen.
      */
     fun launchSystemAudioDefaultPicker(context: Context): DefaultPickerLaunchResult {
         when (val status = inspectCurrentAudioDefault(context)) {
@@ -200,13 +191,16 @@ object DefaultAudioPlayerHelper {
     }
 
     /**
-     * Opens the Chinese OEM's real "应用 / 默认应用管理" hub (where OEMs place "默认音乐/音频"),
-     * falling back cleanly to Settings.ACTION_APPLICATION_SETTINGS (the OEM's top-level Apps page)
-     * instead of Google's stripped 6-role screen or web App Links.
+     * Opens the OEM's real "默认应用" screen or the parent "应用" dashboard (the level ABOVE both
+     * "应用管理" and "默认应用"), falling back cleanly to top-level Settings.ACTION_SETTINGS.
+     *
+     * Never calls ACTION_APPLICATION_SETTINGS or ACTION_MANAGE_APPLICATIONS_SETTINGS because those
+     * jump inside the sibling "应用管理" list where "默认应用" is not visible.
      */
-    fun openOemAppManagementSettings(context: Context): Boolean {
+    fun openOemAppsHubOrSystemSettings(context: Context): Boolean {
         val m = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase()
-        val oemCandidates = buildList<Intent> {
+        val candidates = buildList<Intent> {
+            // 1. Vendor-specific direct "默认应用" activities (only launched if exported & resolvable)
             when {
                 m.contains("oppo") || m.contains("oneplus") || m.contains("realme") || m.contains("oplus") -> {
                     add(
@@ -274,40 +268,40 @@ object DefaultAudioPlayerHelper {
                     )
                 }
             }
-            // Universal OEM-native Apps hub (on ColorOS/HyperOS/HarmonyOS/OriginOS this opens the
-            // real OEM "应用" page with full 默认应用 / 应用管理, NOT Google's 6-role page or App Links)
-            add(Intent(Settings.ACTION_APPLICATION_SETTINGS))
-            add(Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS))
+
+            // 2. Parent "应用" (Apps) hub — sits ABOVE sibling "应用管理" and "默认应用" menus
+            add(
+                Intent().setComponent(
+                    ComponentName(
+                        "com.android.settings",
+                        "com.android.settings.Settings\$AppsDashboardActivity"
+                    )
+                )
+            )
+            add(
+                Intent().setComponent(
+                    ComponentName(
+                        "com.android.settings",
+                        "com.android.settings.Settings\$AppAndNotificationDashboardActivity"
+                    )
+                )
+            )
+
+            // 3. Guaranteed clean fallback: top-level System Settings (so user taps 应用 → 默认应用)
             add(Intent(Settings.ACTION_SETTINGS))
         }
 
-        for (intent in oemCandidates) {
+        val pm = context.packageManager
+        for (intent in candidates) {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            val resolved = runCatching {
-                context.packageManager.resolveActivity(intent, 0)
-            }.getOrNull()
-            if (resolved != null && runCatching { context.startActivity(intent) }.isSuccess) {
+            val resolved = runCatching { pm.resolveActivity(intent, 0) }.getOrNull() ?: continue
+            val isExported = resolved.activityInfo?.exported ?: true
+            if (!isExported) continue
+            if (runCatching { context.startActivity(intent) }.isSuccess) {
                 return true
             }
         }
         return false
-    }
-
-    /**
-     * Opens the system App Info screen for Auralis or for a rival music player package
-     * (so the user can tap "清除默认设置" cleanly).
-     */
-    fun openAppDetailsSettings(context: Context, packageName: String = context.packageName): Boolean {
-        val intent = Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", packageName, null)
-        ).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        if (runCatching { context.startActivity(intent) }.isSuccess) {
-            return true
-        }
-        return openOemAppManagementSettings(context)
     }
 
     private fun ensureProbeContentUri(context: Context): Uri? {
@@ -353,7 +347,6 @@ object DefaultAudioPlayerHelper {
         buffer.putShort(bitsPerSample.toShort())
         buffer.put("data".toByteArray(Charsets.US_ASCII))
         buffer.putInt(dataSize)
-        // Remaining dataSize bytes are already 0 (digital silence)
         return buffer.array()
     }
 }

@@ -204,7 +204,7 @@ fun DefaultAudioPlayerGuideDialog(
                     )
                     is AudioDefaultStatus.LockedByOther -> Triple(
                         "当前由「${status.appLabel}」接管默认播放",
-                        "由于系统已将音频默认绑定到「${status.appLabel}」，建议先前往其应用详情清除默认设置，再唤起系统选择 Auralis。",
+                        "系统当前已将音频默认绑定给「${status.appLabel}」。请前往系统设置中的「应用 → 默认应用 → 音乐」直接切换为 Auralis（「默认应用」与「应用管理」同级，位于「应用」页面内）。",
                         RubyAccent
                     )
                 }
@@ -231,7 +231,7 @@ fun DefaultAudioPlayerGuideDialog(
                     )
                 }
 
-                // Primary context-aware action button
+                // Primary context-aware action button (never opens rival App Details or wrong sibling 应用管理)
                 when (status) {
                     AudioDefaultStatus.NoDefaultLocked -> {
                         Button(
@@ -246,10 +246,10 @@ fun DefaultAudioPlayerGuideDialog(
                                         onDismiss()
                                     }
                                     is DefaultPickerLaunchResult.BlockedByExistingDefault -> {
-                                        onActionFeedback("当前默认播放器为「${res.appLabel}」，请先清除其默认设置")
+                                        onActionFeedback("当前默认播放器为「${res.appLabel}」，请前往系统「应用 → 默认应用」切换")
                                     }
                                     DefaultPickerLaunchResult.LaunchFailed -> {
-                                        onActionFeedback("系统未响应选择器，请通过下方「应用」设置手动指派")
+                                        onActionFeedback("系统未响应选择器，请通过下方「应用 / 默认应用」设置手动指派")
                                     }
                                 }
                             },
@@ -266,12 +266,26 @@ fun DefaultAudioPlayerGuideDialog(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("唤起系统音频打开方式（推荐）")
                         }
+
+                        OutlinedButton(
+                            onClick = {
+                                DefaultAudioPlayerHelper.openOemAppsHubOrSystemSettings(context)
+                            },
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("default_player_dialog_oem_apps")
+                        ) {
+                            Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("打开系统「应用 / 默认应用」设置")
+                        }
                     }
                     is AudioDefaultStatus.LockedByOther -> {
                         Button(
                             onClick = {
-                                DefaultAudioPlayerHelper.openAppDetailsSettings(context, status.packageName)
-                                onActionFeedback("请在「${status.appLabel}」详情中点选默认打开 → 清除默认设置")
+                                DefaultAudioPlayerHelper.openOemAppsHubOrSystemSettings(context)
+                                onActionFeedback("请按路径前往「应用 → 默认应用 → 音乐」选择 Auralis")
                             },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = RubyAccent,
@@ -280,40 +294,28 @@ fun DefaultAudioPlayerGuideDialog(
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("default_player_dialog_clear_rival")
+                                .testTag("default_player_dialog_oem_apps")
                         ) {
-                            Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("打开「${status.appLabel}」详情以清除默认")
+                            Text("打开系统「应用 / 默认应用」设置")
                         }
                     }
                     AudioDefaultStatus.AlreadyAuralis -> {
                         OutlinedButton(
                             onClick = {
-                                DefaultAudioPlayerHelper.openAppDetailsSettings(context)
+                                DefaultAudioPlayerHelper.openOemAppsHubOrSystemSettings(context)
                             },
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("default_player_dialog_auralis_details")
+                                .testTag("default_player_dialog_oem_apps")
                         ) {
-                            Text("查看 Auralis 应用详情")
+                            Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("打开系统「应用 / 默认应用」设置")
                         }
                     }
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        DefaultAudioPlayerHelper.openOemAppManagementSettings(context)
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("default_player_dialog_oem_apps")
-                ) {
-                    Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("打开系统「应用」设置")
                 }
 
                 // Vendor-specific Chinese Android path guide
@@ -1597,9 +1599,9 @@ internal fun LibraryAndScanSettingsSubPage(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("仅筛选含专辑或封面", style = MaterialTheme.typography.bodyMedium)
+                            Text("仅筛选含有效内嵌封面", style = MaterialTheme.typography.bodyMedium)
                             Text(
-                                "需具备有效专辑名或内嵌封面方可归入音乐曲库",
+                                "严格校验音频真实内嵌封面图，屏蔽无封面音频；多项勾选为「且」关系，须同时满足",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1937,7 +1939,7 @@ internal fun BackupAndSystemSettingsSubPage(
                 val (statusLabel, statusTint) = when (val st = audioDefaultStatus) {
                     AudioDefaultStatus.AlreadyAuralis -> "当前状态：Auralis 已是系统默认音频播放器" to EmeraldLossless
                     AudioDefaultStatus.NoDefaultLocked -> "当前状态：未锁定默认音频播放器，可直接唤起选择" to adaptiveGoldColor()
-                    is AudioDefaultStatus.LockedByOther -> "当前默认播放器：${st.appLabel}（需清除默认后切换）" to RubyAccent
+                    is AudioDefaultStatus.LockedByOther -> "当前默认播放器：${st.appLabel}（请在系统「应用 → 默认应用」切换）" to RubyAccent
                 }
 
                 Row(
@@ -1999,13 +2001,13 @@ internal fun BackupAndSystemSettingsSubPage(
                         when (val st = audioDefaultStatus) {
                             AudioDefaultStatus.AlreadyAuralis -> "查看默认音频配置说明"
                             AudioDefaultStatus.NoDefaultLocked -> "唤起系统「音频打开方式」（选 Auralis 始终）"
-                            is AudioDefaultStatus.LockedByOther -> "更换默认播放器（当前：${st.appLabel}）"
+                            is AudioDefaultStatus.LockedByOther -> "查看切换指引（当前：${st.appLabel}）"
                         }
                     )
                 }
 
                 OutlinedButton(
-                    onClick = { DefaultAudioPlayerHelper.openOemAppManagementSettings(context) },
+                    onClick = { DefaultAudioPlayerHelper.openOemAppsHubOrSystemSettings(context) },
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2013,7 +2015,7 @@ internal fun BackupAndSystemSettingsSubPage(
                 ) {
                     Icon(Icons.Rounded.Smartphone, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("打开系统「应用」设置（国产默认应用入口）")
+                    Text("打开系统「应用 / 默认应用」设置")
                 }
 
                 Column(

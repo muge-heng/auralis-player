@@ -13,17 +13,14 @@ data class PreReleaseMilestone(
 )
 
 /**
- * Centralized in-app semantic version metadata.
- * Note: Android APK versionCode/versionName stays at default (1 / "1.0") to preserve seamless
- * upgrade compatibility on devices that already installed earlier builds, while user-facing
- * semantic versions are tracked cleanly here starting from v0.9.0.
+ * Centralized in-app semantic version metadata synchronized with APK versionCode/versionName.
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "1.0.1"
-    const val PREVIOUS_VERSION = "1.0.0"
+    const val CURRENT_VERSION = "1.0.2"
+    const val PREVIOUS_VERSION = "1.0.1"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
-    const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
+    const val APK_COMPAT_LABEL = "安装包版本 1.0.2 (Build 2)"
 
     const val PRE_RELEASE_NOTE =
         "v0.9.0 是第一个在 GitHub 公开维护的版本。在此之前的早期开发阶段未单独切分版本号，应用历经了以下核心演进路径："
@@ -49,8 +46,19 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "1.0.1",
+            version = "1.0.2",
             tag = "当前版本",
+            title = "彻底根治无封面屏蔽失效 · 严格「且」逻辑与存量清理 · 系统「应用」父级入口精修 · 安装包版本号同步升级",
+            highlights = listOf(
+                "彻底修复扫描时勾选「屏蔽无封面」后仍导入无封面默认图标曲目的问题：移除此前将「专辑名」与「内嵌封面」以「或（OR）」合并判定的缺陷（系统 MediaStore 会自动将文件夹名填作专辑名导致无封面文件绕过校验），改为严格校验音频文件真实有效的内嵌图片头与缓存文件，且所有已勾选的筛选条件均按严格「且（AND）」逻辑同时满足。",
+                "完善重新智能扫描时的存量联动处理：此前已扫描入库但不再满足新筛选规则的曲目（例如勾选了「仅筛选含有效内嵌封面」后的无封面音频），若开启「归入普通音频区」会自动从音乐唱片馆移入普通音频区，若关闭则自动封存播放记录并从曲库中移除；同时文件夹导入也同步接入严格筛选校验。",
+                "精修「默认音频播放器」跳转策略：移除当默认播放器已被其他应用占用时无效的「打开对方应用详情清除默认」按钮，且不再误跳入「应用管理」同级子菜单（此前因落入应用管理导致看不到同级的「默认应用」菜单），改为优先直达系统「默认应用」或上级「应用」设置页并干净兜底至系统设置首页。",
+                "同步更新 Android 安装包版本号至 versionName 1.0.2（versionCode 2）。"
+            )
+        ),
+        AppReleaseNote(
+            version = "1.0.1",
+            tag = "历史版本",
             title = "禁止未经确认的自动扫描 · 时长双界线筛选 · 扫描弹窗直达详细设置 · 国产安卓默认音频打开方式重构",
             highlights = listOf(
                 "彻底移除首次引导完成或授权后的自动全盘扫描逻辑：应用绝不在用户尚未配置筛选规则前私自触发扫描，始终由你在确认扫描规则后主动发起。",

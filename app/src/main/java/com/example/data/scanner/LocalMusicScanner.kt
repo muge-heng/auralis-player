@@ -32,6 +32,7 @@ class LocalMusicScanner(
     suspend fun scanDeviceMediaStore(
         filter: ScanFilterConfig,
         existingTracksById: Map<String, Track>,
+        customCoverTrackIds: Set<String> = emptySet(),
         onProgress: (ScanProgress) -> Unit
     ): List<Track> = withContext(Dispatchers.IO) {
         val results = mutableListOf<Track>()
@@ -147,22 +148,38 @@ class LocalMusicScanner(
                         albumId
                     ).toString()
 
-                    // Reuse deep metadata if already scanned and file size unchanged
-                    if (existing != null && existing.sizeBytes == sizeBytes && existing.durationMs == durationMs) {
-                        val passesStrict = passesStrictMusicCriteria(
-                            hasAnyMeta = existing.hasValidArtist || existing.hasValidAlbum || !existing.artworkPath.isNullOrBlank() || existing.genre.isNotBlank() || existing.year > 0,
+                    // Reuse deep metadata if already scanned, file unchanged, and cached cover (if any) still exists
+                    val cachedArtStillValid = existing?.artworkPath == null ||
+                        MetadataExtractor.hasVerifiedArtworkFile(existing.artworkPath)
+                    if (existing != null &&
+                        existing.sizeBytes == sizeBytes &&
+                        existing.durationMs == durationMs &&
+                        cachedArtStillValid
+                    ) {
+                        val hasRealArt = (trackId in customCoverTrackIds) ||
+                            MetadataExtractor.hasVerifiedArtworkFile(existing.artworkPath)
+                        val hasAnyMeta = existing.hasValidArtist || existing.hasValidAlbum ||
+                            hasRealArt || existing.genre.isNotBlank() || existing.year > 0
+                        val passesStrict = normalizedFilter.passesStrictCriteria(
+                            hasAnyMeta = hasAnyMeta,
                             hasArtist = existing.hasValidArtist,
-                            hasAlbumOrArt = existing.hasValidAlbum || !existing.artworkPath.isNullOrBlank(),
-                            filter = filter
+                            hasRealArtwork = hasRealArt
                         )
-                        if (!passesStrict && !filter.classifyUnverifiedAsGeneralAudio && !existing.isGeneralAudio) {
+                        if (!passesStrict && !normalizedFilter.classifyUnverifiedAsGeneralAudio) {
                             continue
+                        }
+                        val resolvedIsGeneral = if (!passesStrict) true else existing.isGeneralAudio
+                        val safeAlbumArtUri = if (hasRealArt || !normalizedFilter.requireAlbumOrArt) {
+                            albumArtUri
+                        } else {
+                            null
                         }
                         results.add(
                             existing.copy(
                                 contentUri = contentUri.toString(),
                                 folderPath = folderPath,
-                                albumArtUri = albumArtUri
+                                albumArtUri = safeAlbumArtUri,
+                                isGeneralAudio = resolvedIsGeneral
                             )
                         )
                         continue
@@ -182,15 +199,15 @@ class LocalMusicScanner(
 
                     val hasArtist = com.example.model.isValidMusicTag(resolvedArtist, "未知艺术家")
                     val hasAlbum = com.example.model.isValidMusicTag(resolvedAlbum, "未知专辑")
-                    val hasArt = !details.artworkPath.isNullOrBlank()
-                    val hasAnyMeta = hasArtist || hasAlbum || hasArt ||
+                    val hasRealArt = (trackId in customCoverTrackIds) ||
+                        MetadataExtractor.hasVerifiedArtworkFile(details.artworkPath)
+                    val hasAnyMeta = hasArtist || hasAlbum || hasRealArt ||
                         !details.title.isNullOrBlank() || !details.genre.isNullOrBlank() || details.year > 0
 
-                    val passesStrict = passesStrictMusicCriteria(
+                    val passesStrict = normalizedFilter.passesStrictCriteria(
                         hasAnyMeta = hasAnyMeta,
                         hasArtist = hasArtist,
-                        hasAlbumOrArt = hasAlbum || hasArt,
-                        filter = filter
+                        hasRealArtwork = hasRealArt
                     )
                     val autoGeneralAudio = MetadataExtractor.classifyAudioAsGeneral(
                         rawTitleTag = details.title ?: mediaTitle,
@@ -203,10 +220,19 @@ class LocalMusicScanner(
                         isMusicFlag = isMusicFlag
                     )
 
-                    if (!passesStrict && !filter.classifyUnverifiedAsGeneralAudio) {
+                    if (!passesStrict && !normalizedFilter.classifyUnverifiedAsGeneralAudio) {
                         continue
                     }
-                    val finalIsGeneralAudio = existing?.isGeneralAudio ?: (!passesStrict || autoGeneralAudio)
+                    val finalIsGeneralAudio = if (!passesStrict) {
+                        true
+                    } else {
+                        existing?.isGeneralAudio ?: autoGeneralAudio
+                    }
+                    val safeAlbumArtUri = if (hasRealArt || !normalizedFilter.requireAlbumOrArt) {
+                        albumArtUri
+                    } else {
+                        null
+                    }
 
                     results.add(
                         Track(
@@ -231,7 +257,7 @@ class LocalMusicScanner(
                             isLossless = details.isLossless,
                             isHiRes = details.isHiRes,
                             artworkPath = details.artworkPath,
-                            albumArtUri = albumArtUri,
+                            albumArtUri = safeAlbumArtUri,
                             embeddedLyrics = details.embeddedLyrics,
                             dateAddedSec = cursor.getLong(dateCol),
                             playCount = existing?.playCount ?: 0,
@@ -323,8 +349,23 @@ class LocalMusicScanner(
                                     onProgress(ScanProgress(true, scanned, tracks.size, name))
                                     val docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childId)
                                     val track = metadataExtractor.buildTrackFromUri(docUri, name, size, folderName)
-                                    if (filter.matchesDurationMs(track.durationMs)) {
-                                        tracks.add(track)
+                                    val normFilter = filter.normalized()
+                                    if (normFilter.matchesDurationMs(track.durationMs)) {
+                                        val hasRealArt = MetadataExtractor.hasVerifiedArtworkFile(track.artworkPath)
+                                        val hasAnyMeta = track.hasValidArtist || track.hasValidAlbum ||
+                                            hasRealArt || track.genre.isNotBlank() || track.year > 0
+                                        val passesStrict = normFilter.passesStrictCriteria(
+                                            hasAnyMeta = hasAnyMeta,
+                                            hasArtist = track.hasValidArtist,
+                                            hasRealArtwork = hasRealArt
+                                        )
+                                        if (passesStrict || normFilter.classifyUnverifiedAsGeneralAudio) {
+                                            tracks.add(
+                                                track.copy(
+                                                    isGeneralAudio = if (!passesStrict) true else track.isGeneralAudio
+                                                )
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -414,17 +455,5 @@ class LocalMusicScanner(
             }
         }
         return false
-    }
-
-    private fun passesStrictMusicCriteria(
-        hasAnyMeta: Boolean,
-        hasArtist: Boolean,
-        hasAlbumOrArt: Boolean,
-        filter: ScanFilterConfig
-    ): Boolean {
-        if (filter.requireMetadata && !hasAnyMeta) return false
-        if (filter.requireArtist && !hasArtist) return false
-        if (filter.requireAlbumOrArt && !hasAlbumOrArt) return false
-        return true
     }
 }

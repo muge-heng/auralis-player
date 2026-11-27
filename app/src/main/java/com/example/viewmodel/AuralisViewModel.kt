@@ -636,21 +636,52 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _scanProgress.value = ScanProgress(isScanning = true)
             try {
-                val filter = prefs.scanFilterFlow.first()
+                val filter = prefs.scanFilterFlow.first().normalized()
                 val existingList = trackDao.getAllTracksSnapshot()
                 val existingById = existingList.associateBy { it.id }
+                val overrides = prefs.getTrackMetadataOverridesSnapshot()
+                val customCoverTrackIds = overrides.values
+                    .filter { MetadataExtractor.hasVerifiedArtworkFile(it.customArtworkPath) }
+                    .map { it.trackId }
+                    .toSet()
+
                 val scanned = scanner.scanDeviceMediaStore(
                     filter = filter,
                     existingTracksById = existingById,
+                    customCoverTrackIds = customCoverTrackIds,
                     onProgress = { _scanProgress.value = it }
                 )
+                val scannedIds = scanned.mapTo(HashSet(scanned.size)) { it.id }
+
                 val analysis = withContext(Dispatchers.Default) {
-                    TrackDeduplicator.analyzeImportCandidates(scanned, existingList)
+                    TrackDeduplicator.analyzeImportCandidates(
+                        incoming = scanned,
+                        existing = existingList,
+                        syncGeneralAudioZone = true
+                    )
                 }
                 val toUpsert = enrichTracksWithArchivedHistory(analysis.updatedExistingTracks + analysis.newTracks)
                 if (toUpsert.isNotEmpty()) {
                     trackDao.upsertAll(toUpsert)
                 }
+
+                // Prune previously MediaStore-scanned tracks that no longer satisfy the active scan rules
+                // (e.g. coverless tracks when "仅筛选含有效内嵌封面" is checked and general-audio fallback is off,
+                // or tracks outside duration bounds / inside newly excluded folders).
+                val filteredOutTracks = existingList.filter { existing ->
+                    existing.id.startsWith("ms_") &&
+                        existing.id !in scannedIds &&
+                        existing.id !in customCoverTrackIds
+                }
+                if (filteredOutTracks.isNotEmpty()) {
+                    prefs.archiveTrackRecords(filteredOutTracks)
+                    trackDao.deleteTracksByIds(filteredOutTracks.map { it.id })
+                }
+
+                val demotedToGeneralCount = analysis.updatedExistingTracks.count { updated ->
+                    updated.isGeneralAudio && existingById[updated.id]?.isGeneralAudio == false
+                }
+
                 if (analysis.qualityConflicts.isNotEmpty()) {
                     _pendingImportSourceLabel.value = "智能扫描"
                     _pendingImportConflicts.value = analysis.qualityConflicts
@@ -663,9 +694,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                         prefix = "智能扫描完成",
                         newMusicCount = newMusicCount,
                         newGeneralCount = newGeneralCount,
-                        updatedCount = analysis.updatedExistingTracks.size,
+                        updatedCount = (analysis.updatedExistingTracks.size - demotedToGeneralCount).coerceAtLeast(0),
                         skippedCount = analysis.autoSkippedCount,
-                        conflictCount = analysis.qualityConflicts.size
+                        conflictCount = analysis.qualityConflicts.size,
+                        demotedCount = demotedToGeneralCount,
+                        removedCount = filteredOutTracks.size
                     )
                 )
             } catch (e: SecurityException) {
@@ -786,11 +819,15 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         newGeneralCount: Int,
         updatedCount: Int,
         skippedCount: Int,
-        conflictCount: Int
+        conflictCount: Int,
+        demotedCount: Int = 0,
+        removedCount: Int = 0
     ): String {
         val parts = mutableListOf<String>()
         if (newMusicCount > 0) parts += "新增 $newMusicCount 首音乐"
         if (newGeneralCount > 0) parts += "新增 $newGeneralCount 条普通音频"
+        if (demotedCount > 0) parts += "$demotedCount 首移入普通音频区"
+        if (removedCount > 0) parts += "移除 $removedCount 首未达标曲目"
         if (updatedCount > 0) parts += "更新 $updatedCount 项元数据"
         if (skippedCount > 0) parts += "自动跳过 $skippedCount 首重复"
         if (conflictCount > 0) parts += "$conflictCount 首存在音质差异待决策"

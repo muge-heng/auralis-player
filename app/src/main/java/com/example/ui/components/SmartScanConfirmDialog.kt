@@ -158,8 +158,8 @@ fun SmartScanConfirmDialog(
                 )
 
                 ScanToggleOption(
-                    title = "仅筛选含专辑或内嵌封面",
-                    subtitle = "进一步屏蔽语音备忘录、导出剪辑与零碎音效",
+                    title = "仅筛选含有效内嵌封面",
+                    subtitle = "严格校验音频文件真实内嵌封面图，屏蔽无封面音频；多项勾选为「且」关系，须同时满足",
                     checked = config.requireAlbumOrArt,
                     onCheckedChange = { config = config.copy(requireAlbumOrArt = it) },
                     testTag = "scan_dialog_require_album_art"
