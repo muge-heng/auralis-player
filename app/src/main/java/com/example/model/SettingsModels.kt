@@ -340,6 +340,12 @@ enum class AudioTransitionMode(
         subtitle = "自动识别专辑连贯性与音频类型：同专辑曲目轻吻衔接，跨专辑自动平滑 DJ 混接，普通音频自动避让不串音",
         supportsDurationSlider = true
     ),
+    LYRIC_BRIDGE(
+        label = "人声接唱 (跳过前尾奏)",
+        shortLabel = "人声接唱",
+        subtitle = "末句唱毕后自动渐弱淡出，并精准衔接至下一首第一句歌词前渐强入歌，大幅缩短无词间奏；任一首缺词时自动退化为智能声场混接",
+        supportsDurationSlider = true
+    ),
     VINYL_BRAKE(
         label = "黑胶缓停过渡",
         shortLabel = "黑胶缓停",
@@ -358,7 +364,7 @@ enum class AudioTransitionMode(
 data class AudioTransitionConfig(
     val mode: AudioTransitionMode = AudioTransitionMode.GAPLESS,
     val durationMs: Int = 3500, // 1500..10000 ms
-    val fadeOnManualSkip: Boolean = true,
+    val fadeOnManualSkip: Boolean = false,
     val fadeOnPlayPause: Boolean = true
 ) {
     val durationSecondsLabel: String

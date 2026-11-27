@@ -58,7 +58,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,17 +120,19 @@ fun SettingsScreen(
     onOpenAiStudio: () -> Unit,
     onExportSettingsBackup: (includeApiKey: Boolean) -> Unit = {},
     onImportSettingsBackup: () -> Unit = {},
+    activeSection: SettingsSection = SettingsSection.HUB,
+    onSelectSection: (SettingsSection) -> Unit = {},
     pendingBackupImport: PendingSettingsBackupImportPreview? = null,
     onConfirmImportSettingsBackup: (restoreApiKey: Boolean) -> Unit = {},
     onDismissImportSettingsBackup: () -> Unit = {},
-    contentBottomPadding: Int
+    contentBottomPadding: Int,
+    subPageBottomPadding: Int = contentBottomPadding
 ) {
-    var activeSection by rememberSaveable { mutableStateOf(SettingsSection.HUB) }
     var showReleaseNotesSheet by remember { mutableStateOf(false) }
     var showVisualEnhanceConfirmDialog by remember { mutableStateOf(false) }
 
     BackHandler(enabled = activeSection != SettingsSection.HUB) {
-        activeSection = SettingsSection.HUB
+        onSelectSection(SettingsSection.HUB)
     }
 
     AnimatedContent(
@@ -166,7 +167,7 @@ fun SettingsScreen(
                 onImportAudioFiles = onImportAudioFiles,
                 onImportFolder = onImportFolder,
                 onOpenDuplicateManager = onOpenDuplicateManager,
-                onNavigateSection = { activeSection = it },
+                onNavigateSection = onSelectSection,
                 onOpenReleaseNotes = { showReleaseNotesSheet = true },
                 contentBottomPadding = contentBottomPadding
             )
@@ -181,22 +182,22 @@ fun SettingsScreen(
                 onRequestEnableVisualEffects = { showVisualEnhanceConfirmDialog = true },
                 onDisableVisualEffects = { onSetVisualEffectsEnhanced(false) },
                 onSetHapticProfile = onSetHapticProfile,
-                onBack = { activeSection = SettingsSection.HUB },
-                contentBottomPadding = contentBottomPadding
+                onBack = { onSelectSection(SettingsSection.HUB) },
+                contentBottomPadding = subPageBottomPadding
             )
 
             SettingsSection.PLAYBACK_TRANSITION -> PlaybackTransitionSettingsSubPage(
                 audioTransition = audioTransition,
                 onUpdateAudioTransition = onUpdateAudioTransition,
-                onBack = { activeSection = SettingsSection.HUB },
-                contentBottomPadding = contentBottomPadding
+                onBack = { onSelectSection(SettingsSection.HUB) },
+                contentBottomPadding = subPageBottomPadding
             )
 
             SettingsSection.LYRICS -> LyricsSettingsSubPage(
                 lyricSettings = lyricSettings,
                 onUpdateLyricSettings = onUpdateLyricSettings,
-                onBack = { activeSection = SettingsSection.HUB },
-                contentBottomPadding = contentBottomPadding
+                onBack = { onSelectSection(SettingsSection.HUB) },
+                contentBottomPadding = subPageBottomPadding
             )
 
             SettingsSection.LIBRARY_SCAN -> LibraryAndScanSettingsSubPage(
@@ -207,8 +208,8 @@ fun SettingsScreen(
                 onSetEnableGeneralAudioMode = onSetEnableGeneralAudioMode,
                 onUpdateScanFilter = onUpdateScanFilter,
                 onTriggerRescan = onTriggerRescan,
-                onBack = { activeSection = SettingsSection.HUB },
-                contentBottomPadding = contentBottomPadding
+                onBack = { onSelectSection(SettingsSection.HUB) },
+                contentBottomPadding = subPageBottomPadding
             )
 
             SettingsSection.BACKUP_SYSTEM -> BackupAndSystemSettingsSubPage(
@@ -217,8 +218,8 @@ fun SettingsScreen(
                 onExportSettingsBackup = onExportSettingsBackup,
                 onImportSettingsBackup = onImportSettingsBackup,
                 onExecuteDangerZoneAction = onExecuteDangerZoneAction,
-                onBack = { activeSection = SettingsSection.HUB },
-                contentBottomPadding = contentBottomPadding
+                onBack = { onSelectSection(SettingsSection.HUB) },
+                contentBottomPadding = subPageBottomPadding
             )
         }
     }
@@ -241,7 +242,7 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "性能与功耗提醒：该模式对 GPU 算力与内存带宽有更高要求，在部分中低端机型或低电量状态下可能出现耗电加快、机身发热或轻微掉帧。你可以随时在「工坊 → 外观、动效与触觉」中关闭以切回流畅平衡模式。",
+                        text = "性能与功耗提醒：该模式对 GPU 算力与内存带宽有更高要求，在部分中低端机型或低电量状态下可能出现耗电加快、机身发热或轻微掉帧。你可以随时在「工坊 → 外观与触感」中关闭以切回流畅平衡模式。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -341,7 +342,7 @@ private fun SettingsHubContent(
     val librarySummary =
         "≥${scanFilter.minDurationSec}秒 · ≥${scanFilter.minSizeKb}KB · ${scanFilter.excludedFolders.size} 个屏蔽目录"
     val backupSystemSummary =
-        "${deletionGuardMode.shortLabel} · 本地备份恢复 · 危险区清除"
+        "${deletionGuardMode.shortLabel} · 备份恢复 · 数据清理"
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -422,8 +423,8 @@ private fun SettingsHubContent(
         item {
             SettingsCard(
                 icon = Icons.Rounded.LibraryMusic,
-                title = "音频导入与曲库健康",
-                subtitle = "随时扫描设备曲库、导入单曲或文件夹，并一键排查音质冲突"
+                title = "曲库导入与整理",
+                subtitle = "扫描设备音乐、导入单曲或文件夹，并一键整理重复音质"
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -499,7 +500,7 @@ private fun SettingsHubContent(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "智能查重与音质冲突清理",
+                            text = "重复曲目与音质整理",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -613,8 +614,6 @@ private fun SettingsHubContent(
                     iconTint = MaterialTheme.colorScheme.primary,
                     title = SettingsSection.BACKUP_SYSTEM.title,
                     summary = backupSystemSummary,
-                    badge = "备份/清理",
-                    badgeColor = goldAccent,
                     onClick = { onNavigateSection(SettingsSection.BACKUP_SYSTEM) },
                     testTag = "settings_nav_backup_system"
                 )
@@ -660,7 +659,7 @@ private fun SettingsHubContent(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = "关于 ${AppVersionInfo.APP_DISPLAY_NAME} 与版本日志",
+                                text = "关于 ${AppVersionInfo.APP_DISPLAY_NAME}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,

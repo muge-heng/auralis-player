@@ -120,7 +120,7 @@ private data class LyricSettingsBackupDto(
 private data class AudioTransitionBackupDto(
     val mode: String = AudioTransitionMode.GAPLESS.name,
     val durationMs: Int = 3500,
-    val fadeOnManualSkip: Boolean = true,
+    val fadeOnManualSkip: Boolean = false,
     val fadeOnPlayPause: Boolean = true
 )
 

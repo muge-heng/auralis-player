@@ -335,9 +335,11 @@ object LyricParser {
         }
 
         val lines = merged.mapIndexed { idx, (startMs, lineText, translation) ->
-            val nextStart = merged.getOrNull(idx + 1)?.first ?: (startMs + 4800L)
+            val nextLineStart = merged.getOrNull(idx + 1)?.first
+            val nextStart = nextLineStart ?: (startMs + 4800L)
+            val blankUpperBound = nextLineStart ?: (startMs + 12_000L)
             val explicitBlankEnd = blankMarkers.firstOrNull { marker ->
-                marker >= startMs + 600L && marker < nextStart
+                marker >= startMs + 600L && marker <= blankUpperBound
             }
             val endMs = if (explicitBlankEnd != null) {
                 explicitBlankEnd

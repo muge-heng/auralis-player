@@ -182,6 +182,16 @@ fun resolveLyricWavePhysics(
 }
 
 /**
+ * Computes the unscaled horizontal width fraction for a lyric row anchored at TransformOrigin(0f, 0.5f)
+ * so that scaling up to [maxActiveScale] (e.g., 1.08x in Elastic Wave mode) never overflows or clips
+ * against the right viewport padding.
+ */
+fun resolveSafeLyricRowWidthFraction(maxActiveScale: Float): Float {
+    val safeScale = maxActiveScale.coerceAtLeast(1.0f)
+    return (0.985f / safeScale).coerceIn(0.88f, 0.96f)
+}
+
+/**
  * Apple Music-caliber Word-by-Word Karaoke Lyric Stage.
  * Features progressive Gaussian depth-of-field blur & progressive scale-down on non-active lines,
  * auto-unblur while manually scrolling, optional Immersive Lyrics mode, adjustable font weight (300..900),
@@ -743,7 +753,14 @@ fun LyricStageView(
                         start = 24.dp,
                         end = 24.dp
                     ),
-                    verticalArrangement = Arrangement.spacedBy(if (isImmersive) 28.dp else 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(
+                        when {
+                            settings.enableElasticLyricWave && isImmersive -> 32.dp
+                            settings.enableElasticLyricWave -> 26.dp
+                            isImmersive -> 28.dp
+                            else -> 22.dp
+                        }
+                    ),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     // Dynamic Instrumental Intro Slot (visible ONLY while playing before first synced lyric)
@@ -988,23 +1005,28 @@ private fun LyricLineRow(
         Shadow.None
     }
 
+    // Constant safe unscaled width fraction so 1.08x Elastic Wave scaling anchored at left edge
+    // never clips the rightmost glyph AND toggling Elastic Wave never causes awkward re-wrapping.
+    val safeContentWidthFraction = remember { resolveSafeLyricRowWidthFraction(1.08f) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp, horizontal = 4.dp)
             .then(blurModifier)
             .graphicsLayer {
+                clip = false
                 translationY = waveBouncePx.value + activeLiftPx
                 scaleX = animatedScale
                 scaleY = animatedScale * waveStretchY.value
                 transformOrigin = TransformOrigin(0f, 0.5f)
                 alpha = animatedAlpha
             }
+            .bouncyClickable(pressedScale = 0.97f, onClick = onClick)
+            .padding(vertical = 6.dp, horizontal = 2.dp)
     ) {
         if (isActive && enableWordAnimation && line.words.isNotEmpty()) {
             FlowRow(
+                modifier = Modifier.fillMaxWidth(safeContentWidthFraction),
                 horizontalArrangement = Arrangement.Start,
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
@@ -1036,7 +1058,8 @@ private fun LyricLineRow(
                     fontWeight = if (isActive) activeFontWeight else inactiveFontWeight,
                     shadow = activeShadow
                 ),
-                color = textColor
+                color = textColor,
+                modifier = Modifier.fillMaxWidth(safeContentWidthFraction)
             )
         }
 
@@ -1048,7 +1071,8 @@ private fun LyricLineRow(
                 fontWeight = FontWeight((fontWeightValue - 200).coerceIn(300, 700)),
                 fontSize = (15f * fontScale).sp,
                 lineHeight = (22f * fontScale).sp,
-                color = baseInk.copy(alpha = if (isActive) 0.80f else 0.52f)
+                color = baseInk.copy(alpha = if (isActive) 0.80f else 0.52f),
+                modifier = Modifier.fillMaxWidth(safeContentWidthFraction)
             )
         }
     }

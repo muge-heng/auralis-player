@@ -1,6 +1,7 @@
 package com.example
 
 import com.example.data.ai.DeepSeekChatClient
+import com.example.data.lyrics.LyricParser
 import com.example.data.scanner.MetadataExtractor
 import com.example.model.AI_MAX_TOKEN_PRESETS
 import com.example.model.AiAttachmentBadge
@@ -25,6 +26,7 @@ import com.example.ui.components.buildArtistAutoPlaylists
 import com.example.ui.components.extractArtistNames
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -505,19 +507,20 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 9)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 10)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -897,10 +900,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v0.9.8 is active
+        // Liquid Glass is the default nav bar & v0.9.9 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -1190,6 +1193,155 @@ class ExampleUnitTest {
         assertTrue(elastic.dampingRatio < standard.dampingRatio)
         assertTrue(elastic.maxDistance > standard.maxDistance)
         assertTrue(elastic.activeScale > standard.activeScale)
+
+        // Safe unscaled width fraction guarantees 1.08x Elastic Wave scaling never exceeds right margin
+        val safeFraction = com.example.ui.components.resolveSafeLyricRowWidthFraction(elastic.activeScale)
+        assertTrue(safeFraction * elastic.activeScale < 1.0f)
+        assertTrue(safeFraction >= 0.88f)
+    }
+
+    @Test
+    fun crossfadePreArmWindowActivatesBeforeTriggerForCrossfadeAndAutoMixOnly() {
+        val triggerMs = 4_000L
+        val trackDurMs = 210_000L
+        // 1.5s before trigger window -> should pre-arm
+        assertTrue(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.CROSSFADE,
+                remainingMs = 5_500L,
+                triggerWindowMs = triggerMs,
+                trackDurationMs = trackDurMs
+            )
+        )
+        assertTrue(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.AUTOMIX,
+                remainingMs = 5_000L,
+                triggerWindowMs = triggerMs,
+                trackDurationMs = trackDurMs
+            )
+        )
+        // Too early (10s remaining) -> do not pre-arm yet
+        assertFalse(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.CROSSFADE,
+                remainingMs = 10_000L,
+                triggerWindowMs = triggerMs,
+                trackDurationMs = trackDurMs
+            )
+        )
+        // Non-overlapping modes never pre-arm a dual-stream tail player
+        assertFalse(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.SMOOTH_FADE,
+                remainingMs = 5_000L,
+                triggerWindowMs = triggerMs,
+                trackDurationMs = trackDurMs
+            )
+        )
+        assertFalse(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.GAPLESS,
+                remainingMs = 5_000L,
+                triggerWindowMs = triggerMs,
+                trackDurationMs = trackDurMs
+            )
+        )
+
+        // Dual-Deck fade duration clamps cleanly before outgoing EOF without ever dropping below floor
+        assertEquals(4_000L, com.example.playback.computeDualDeckFadeDurationMs(4_000L, 6_000L))
+        assertEquals(2_940L, com.example.playback.computeDualDeckFadeDurationMs(4_000L, 3_000L))
+        assertEquals(4_000L, com.example.playback.computeDualDeckFadeDurationMs(4_000L, null))
+        assertEquals(280L, com.example.playback.computeDualDeckFadeDurationMs(4_000L, 200L))
+    }
+
+    @Test
+    fun lyricBridgeExtractsVocalBoundariesSkipsIntroOutroAndDefaultsManualSkipOff() {
+        // 1. fadeOnManualSkip defaults to false so manual Next/Prev clicks are instant by default
+        val defaultCfg = com.example.model.AudioTransitionConfig()
+        assertFalse(defaultCfg.fadeOnManualSkip)
+        val bridgeDefault = com.example.model.AudioTransitionConfig(
+            mode = com.example.model.AudioTransitionMode.LYRIC_BRIDGE,
+            durationMs = 3_500
+        )
+        assertFalse(bridgeDefault.fadeOnManualSkip)
+        val manualSkipResolved = com.example.playback.resolveEffectiveTransition(
+            config = bridgeDefault,
+            outgoing = null,
+            incoming = null,
+            isManualSkip = true
+        )
+        assertEquals(com.example.model.AudioTransitionMode.GAPLESS, manualSkipResolved.mode)
+
+        // 2. Credit/header filtering + globalOffsetMs adjustment
+        val songALrc = """
+            [00:00.00]光年之外 - G.E.M.邓紫棋
+            [00:01.00]作词：G.E.M.邓紫棋
+            [00:02.00]作曲：G.E.M.邓紫棋
+            [00:18.50]感受停在我发端的指尖
+            [02:10.00]缘分让我们相遇乱世以外
+            [03:18.00]命运却要我们危难中相爱
+            [03:23.00]
+        """.trimIndent()
+        val songBLrc = """
+            [00:00.50]制作人：张亚东
+            [00:25.00]第一句真正唱出的歌词
+            [01:40.00]副歌继续推进
+            [03:10.00]最后一句余音绕梁
+        """.trimIndent()
+
+        val docA = LyricParser.parse(songALrc, sourceLabel = "LRC", enableSimulatedWordByWord = false)
+        val docB = LyricParser.parse(songBLrc, sourceLabel = "LRC", enableSimulatedWordByWord = false)
+        val winA = com.example.playback.extractVocalLyricWindow(docA, trackDurationMs = 240_000L)
+        val winB = com.example.playback.extractVocalLyricWindow(docB, trackDurationMs = 230_000L)
+
+        assertNotNull(winA)
+        assertNotNull(winB)
+        assertEquals(18_500L, winA!!.firstVocalStartMs)
+        assertEquals(203_000L, winA.lastVocalEndMs)
+        assertEquals(25_000L, winB!!.firstVocalStartMs)
+
+        // 3. Bridge plan triggers right after Song A's last vocal line and cues Song B just before its first vocal line
+        val plan = com.example.playback.computeLyricBridgePlan(
+            outgoingWindow = winA,
+            incomingWindow = winB,
+            outgoingDurationMs = 240_000L,
+            incomingDurationMs = 230_000L,
+            configuredDurationMs = 3_500L
+        )
+        assertNotNull(plan)
+        assertEquals(203_350L, plan!!.triggerPosMs)
+        assertEquals(3_500L, plan.fadeDurationMs)
+        // Incoming cue lands ~2.73s before the 25.0s first vocal line
+        assertTrue(plan.incomingStartPosMs in 21_500L..23_500L)
+
+        // 4. Plain unsynced lyrics or missing lyrics return null so engine degrades cleanly to AutoMix
+        val plainDoc = LyricParser.parse("第一行纯文本\n第二行纯文本", sourceLabel = "PLAIN", enableSimulatedWordByWord = false)
+        assertNull(com.example.playback.extractVocalLyricWindow(plainDoc, trackDurationMs = 200_000L))
+        assertNull(
+            com.example.playback.computeLyricBridgePlan(
+                outgoingWindow = winA,
+                incomingWindow = null,
+                outgoingDurationMs = 240_000L,
+                incomingDurationMs = 230_000L,
+                configuredDurationMs = 3_500L
+            )
+        )
+
+        // 5. Lyric Bridge gain curve maintains constant equal-power acoustic energy
+        for (p in listOf(0.0f, 0.25f, 0.5f, 0.75f, 1.0f)) {
+            val g = com.example.playback.computeTransitionGains(com.example.model.AudioTransitionMode.LYRIC_BRIDGE, p)
+            val energy = g.outgoingGain * g.outgoingGain + g.incomingGain * g.incomingGain
+            assertEquals(1.0f, energy, 0.005f)
+        }
+        assertTrue(
+            com.example.playback.shouldPreArmCrossfadeTail(
+                mode = com.example.model.AudioTransitionMode.LYRIC_BRIDGE,
+                remainingMs = 5_000L,
+                triggerWindowMs = 3_500L,
+                trackDurationMs = 210_000L
+            )
+        )
     }
 }
 

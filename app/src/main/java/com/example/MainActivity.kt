@@ -20,6 +20,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -68,6 +69,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,6 +111,7 @@ import com.example.ui.screens.NowPlayingSheet
 import com.example.ui.screens.NowPlayingStage
 import com.example.ui.screens.PlaylistsScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.SettingsSection
 import com.example.ui.screens.shouldCollapseNowPlayingSheet
 import com.example.ui.theme.AuralisTheme
 import com.example.ui.theme.RubyAccent
@@ -247,6 +250,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val pendingImportSourceLabel by viewModel.pendingImportSourceLabel.collectAsStateWithLifecycle()
 
     var currentTab by remember { mutableStateOf(MainDestination.LIBRARY) }
+    var activeSettingsSection by rememberSaveable { mutableStateOf(SettingsSection.HUB) }
     var showEqualizer by remember { mutableStateOf(false) }
     var showLyricsManager by remember { mutableStateOf(false) }
     var showDuplicateManager by remember { mutableStateOf(false) }
@@ -445,7 +449,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     }
 
     val currentTrack = playbackState.currentTrack
-    val showMiniBarInTab = currentTrack != null && currentTab != MainDestination.AI_STUDIO
+    val isInSettingsSubPage = currentTab == MainDestination.SETTINGS && activeSettingsSection != SettingsSection.HUB
+    val showMiniBarInTab = currentTrack != null && currentTab != MainDestination.AI_STUDIO && !isInSettingsSubPage
     val glassBackdropState = rememberLiquidGlassBackdropState()
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -456,7 +461,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
         val navBarBottomDp = with(density) { WindowInsets.navigationBars.getBottom(density).toDp().value.roundToInt() }
         val isImeVisible = WindowInsets.ime.getBottom(density) > 0
         val isFloatingGlassNav = !useNavigationRail && navBarStyle == NavBarStyle.FLOATING_GLASS
-        val showFloatingGlassNavNow = isFloatingGlassNav && !(currentTab == MainDestination.AI_STUDIO && isImeVisible)
+        val showFloatingGlassNavNow = isFloatingGlassNav && !isInSettingsSubPage && !(currentTab == MainDestination.AI_STUDIO && isImeVisible)
         val hasFloatingChrome = (showMiniBarInTab && currentTrack != null) || showFloatingGlassNavNow
         val recordBackdropForGlass = hasFloatingChrome && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
@@ -558,7 +563,11 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
             containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets.statusBars,
             bottomBar = {
-                if (!useNavigationRail && navBarStyle == NavBarStyle.CLASSIC) {
+                AnimatedVisibility(
+                    visible = !useNavigationRail && navBarStyle == NavBarStyle.CLASSIC && !isInSettingsSubPage,
+                    enter = slideInVertically(tween(220)) { it } + fadeIn(tween(180)),
+                    exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(140))
+                ) {
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
                     ) {
@@ -810,10 +819,13 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onImportSettingsBackup = {
                                 settingsBackupImportLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
                             },
+                            activeSection = activeSettingsSection,
+                            onSelectSection = { activeSettingsSection = it },
                             pendingBackupImport = pendingSettingsBackupImport,
                             onConfirmImportSettingsBackup = viewModel::confirmImportSettingsBackup,
                             onDismissImportSettingsBackup = viewModel::dismissImportSettingsBackup,
-                            contentBottomPadding = scrollableTabBottomPadding
+                            contentBottomPadding = scrollableTabBottomPadding,
+                            subPageBottomPadding = navBarBottomDp
                         )
                     }
                     }
@@ -832,10 +844,15 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             ),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (showMiniBarInTab && currentTrack != null) {
-                            val dur = playbackState.durationMs.coerceAtLeast(currentTrack.durationMs).coerceAtLeast(1L)
+                        AnimatedVisibility(
+                            visible = showMiniBarInTab && currentTrack != null,
+                            enter = slideInVertically(tween(220)) { it / 2 } + fadeIn(tween(180)),
+                            exit = slideOutVertically(tween(180)) { it / 2 } + fadeOut(tween(140))
+                        ) {
+                            val trackForMini = currentTrack ?: return@AnimatedVisibility
+                            val dur = playbackState.durationMs.coerceAtLeast(trackForMini.durationMs).coerceAtLeast(1L)
                             MiniPlayerBar(
-                                track = currentTrack,
+                                track = trackForMini,
                                 previousTrack = playbackState.previousTrack,
                                 nextTrack = playbackState.nextTrack,
                                 isPlaying = playbackState.isPlaying,

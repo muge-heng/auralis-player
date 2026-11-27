@@ -116,28 +116,28 @@ enum class SettingsSection(
     val subtitle: String
 ) {
     HUB(
-        title = "声学工坊与偏好",
-        subtitle = "硬件调音、智能过渡、曲库扫描、歌词引擎、光影视觉与安全清理"
+        title = "声学工坊",
+        subtitle = "调音、过渡、歌词与个性偏好"
     ),
     APPEARANCE(
-        title = "外观、动效与触觉",
-        subtitle = "深浅画布、Liquid Glass 悬浮底栏、旗舰光影与阻尼震动"
+        title = "外观与触感",
+        subtitle = "主题画布、悬浮底栏、实时光影与触觉反馈"
     ),
     PLAYBACK_TRANSITION(
-        title = "播放引擎与智能过渡",
-        subtitle = "无缝直连、柔和淡入淡出、等功率交叉淡化、智能混接与黑胶缓停"
+        title = "播放与过渡",
+        subtitle = "切歌衔接方式、淡入淡出时长与播放控制"
     ),
     LYRICS(
-        title = "多源逐字歌词引擎",
-        subtitle = "字重字号、默认聚合源、模拟逐字、灵动弹性波浪、景深模糊与沉浸舞台"
+        title = "歌词与舞台",
+        subtitle = "字体排版、在线歌词源、弹性波浪与沉浸显示"
     ),
     LIBRARY_SCAN(
-        title = "曲库展示与扫描筛选",
-        subtitle = "首页卡片、普通音频区隔离、时长体积门槛与屏蔽目录规则"
+        title = "曲库与扫描",
+        subtitle = "首页卡片、普通音频分区与本地扫描筛选"
     ),
     BACKUP_SYSTEM(
-        title = "数据备份、安全与危险区",
-        subtitle = "本地设置导出与恢复、防误删保护、系统默认应用与分级数据清除"
+        title = "数据与安全",
+        subtitle = "设置备份恢复、防误删保护、默认应用与数据清理"
     )
 }
 
@@ -568,6 +568,7 @@ internal fun PlaybackTransitionSettingsSubPage(
                             AudioTransitionMode.SMOOTH_FADE -> Icons.Rounded.TrendingDown
                             AudioTransitionMode.CROSSFADE -> Icons.Rounded.SwapHoriz
                             AudioTransitionMode.AUTOMIX -> Icons.Rounded.AutoAwesome
+                            AudioTransitionMode.LYRIC_BRIDGE -> Icons.Rounded.Lyrics
                             AudioTransitionMode.VINYL_BRAKE -> Icons.Rounded.Album
                         }
                         Row(
@@ -638,6 +639,20 @@ internal fun PlaybackTransitionSettingsSubPage(
                                                 fontWeight = FontWeight.SemiBold
                                             )
                                         }
+                                    } else if (mode == AudioTransitionMode.LYRIC_BRIDGE) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(RubyAccent.copy(alpha = 0.16f))
+                                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "跳过前尾奏",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = RubyAccent,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
                                     } else if (mode == AudioTransitionMode.CROSSFADE) {
                                         Box(
                                             modifier = Modifier
@@ -658,7 +673,7 @@ internal fun PlaybackTransitionSettingsSubPage(
                                     text = mode.subtitle,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
+                                    maxLines = 3,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -722,7 +737,7 @@ internal fun PlaybackTransitionSettingsSubPage(
                     Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
                         Text("手动切歌应用过渡", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            text = "开启后点击上一首/下一首时采用轻快短时过渡（约 0.6s–1.4s），不拖泥带水",
+                            text = "默认关闭以保持点按切歌即时响应；开启后点击上一首/下一首时将施加轻快短时过渡（约 0.6s–1.4s）",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -765,7 +780,7 @@ internal fun PlaybackTransitionSettingsSubPage(
                 }
 
                 Text(
-                    text = "智能保护：播放「普通音频区」的播客、课程或录音时，重叠交叉淡化会自动降级为柔和淡出淡入，避免两段人声同时叠音；单曲循环与 A-B 复读期间将自动暂停跨曲过渡。",
+                    text = "智能保护：「人声接唱」仅在当前与下一曲均具备同步歌词时跳过前尾奏，缺词曲目将自动退化为智能声场混接；播放「普通音频区」播客或录音时自动降级为柔和淡出淡入避免人声叠音；单曲循环与 A-B 复读期间暂停跨曲过渡。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

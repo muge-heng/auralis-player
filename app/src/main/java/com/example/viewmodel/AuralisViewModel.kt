@@ -159,7 +159,8 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         context = context,
         scope = viewModelScope,
         onTrackChanged = { track -> handleTrackActivated(track) },
-        onPlaybackError = { msg -> showBanner(msg) }
+        onPlaybackError = { msg -> showBanner(msg) },
+        resolveTrackLyrics = { track -> resolveLocalLyricsForBridge(track) }
     )
 
     val playbackState: StateFlow<PlaybackState> = playbackController.state
@@ -1119,6 +1120,56 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /**
+     * Fast local-only lyric lookup for Lyric Bridge (人声接唱) transition planning.
+     * Never hits the network; checks in-memory active lyrics first, then Room DB, embedded tags, and sidecar files.
+     */
+    private suspend fun resolveLocalLyricsForBridge(track: Track): LyricDocument? {
+        if (track.isGeneralAudio) return null
+        if (playbackState.value.currentTrack?.id == track.id) {
+            val activeDoc = _currentLyric.value
+            if (activeDoc.hasSyncedTimestamps) return activeDoc
+        }
+        return withContext(Dispatchers.IO) {
+            val saved = runCatching { customLyricDao.getCustomLyric(track.id) }.getOrNull()
+            if (saved != null && saved.rawContent.isNotBlank()) {
+                val parsed = runCatching {
+                    LyricParser.parse(
+                        rawInput = saved.rawContent,
+                        sourceLabel = saved.sourceLabel,
+                        userOffsetMs = saved.offsetMs,
+                        enableSimulatedWordByWord = false
+                    )
+                }.getOrNull()
+                if (parsed != null && parsed.hasSyncedTimestamps) return@withContext parsed
+            }
+
+            if (!track.embeddedLyrics.isNullOrBlank()) {
+                val parsed = runCatching {
+                    LyricParser.parse(
+                        rawInput = track.embeddedLyrics,
+                        sourceLabel = "内嵌歌词标签",
+                        enableSimulatedWordByWord = false
+                    )
+                }.getOrNull()
+                if (parsed != null && parsed.hasSyncedTimestamps) return@withContext parsed
+            }
+
+            val sidecar = runCatching { scanner.findSidecarLyric(track) }.getOrNull()
+            if (sidecar != null) {
+                val parsed = runCatching {
+                    LyricParser.parse(
+                        rawInput = sidecar.first,
+                        sourceLabel = sidecar.second,
+                        enableSimulatedWordByWord = false
+                    )
+                }.getOrNull()
+                if (parsed != null && parsed.hasSyncedTimestamps) return@withContext parsed
+            }
+            null
+        }
+    }
+
     fun smartMatchLyricsOnline(
         track: Track,
         customTitle: String = track.title,
@@ -1223,6 +1274,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     offsetMs = parsed.globalOffsetMs
                 )
             )
+            playbackController.invalidateLyricCache(track.id)
             if (playbackState.value.currentTrack?.id == track.id) {
                 _currentLyric.value = parsed
             }
@@ -1236,6 +1288,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         val newOffset = (current.globalOffsetMs + deltaMs).coerceIn(-10_000L, 10_000L)
         haptics.tickLight()
         _currentLyric.value = current.copy(globalOffsetMs = newOffset)
+        playbackController.invalidateLyricCache(track.id)
         viewModelScope.launch {
             val existing = customLyricDao.getCustomLyric(track.id)
             if (existing != null) {
@@ -2881,6 +2934,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                         aiSessionJobs.clear()
                         _aiSessionRuntimeStates.value = emptyMap()
                         _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
+                        playbackController.invalidateLyricCache(null)
                         withContext(Dispatchers.IO) {
                             trackDao.clearAllFavoritesAndPlayStats()
                             customLyricDao.clearAllCustomLyrics()
@@ -2917,6 +2971,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                         aiSessionJobs.clear()
                         _aiSessionRuntimeStates.value = emptyMap()
                         playbackController.clearQueueAndStop()
+                        playbackController.invalidateLyricCache(null)
                         _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
                         _auraPalette.value = AuraPalette()
                         _pendingImportConflicts.value = emptyList()

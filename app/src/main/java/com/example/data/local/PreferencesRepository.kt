@@ -189,7 +189,7 @@ class PreferencesRepository(private val context: Context) {
         AudioTransitionConfig(
             mode = AudioTransitionMode.fromStored(prefs[Keys.TRANSITION_MODE]),
             durationMs = (prefs[Keys.TRANSITION_DURATION_MS] ?: 3500).coerceIn(1500, 10_000),
-            fadeOnManualSkip = prefs[Keys.TRANSITION_MANUAL_SKIP] ?: true,
+            fadeOnManualSkip = prefs[Keys.TRANSITION_MANUAL_SKIP] ?: false,
             fadeOnPlayPause = prefs[Keys.TRANSITION_PLAY_PAUSE] ?: true
         )
     }

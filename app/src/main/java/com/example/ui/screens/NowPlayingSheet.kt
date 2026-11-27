@@ -960,8 +960,6 @@ fun NowPlayingSheet(
                                 shuffleEnabled = playbackState.shuffleEnabled,
                                 activeInk = ink,
                                 inactiveInk = mutedInk,
-                                accentColor = accentGold,
-                                darkTheme = darkTheme,
                                 onToggle = onToggleShuffle
                             )
 
@@ -1117,17 +1115,34 @@ fun NowPlayingSheet(
                                     .testTag("transport_repeat"),
                                 contentAlignment = Alignment.Center
                             ) {
+                                val repeatActive = playbackState.repeatMode != RepeatMode.OFF
                                 val icon = if (playbackState.repeatMode == RepeatMode.ONE) {
                                     Icons.Rounded.RepeatOne
                                 } else {
                                     Icons.Rounded.Repeat
                                 }
+                                val repeatDotScale by animateFloatAsState(
+                                    targetValue = if (repeatActive) 1f else 0f,
+                                    animationSpec = spring(dampingRatio = 0.55f, stiffness = 320f),
+                                    label = "repeat_dot_scale"
+                                )
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = stringResource(R.string.cd_repeat),
-                                    tint = if (playbackState.repeatMode != RepeatMode.OFF) ink else mutedInk,
+                                    tint = if (repeatActive) ink else mutedInk,
                                     modifier = Modifier.size(22.dp)
                                 )
+                                if (repeatDotScale > 0.02f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(bottom = 5.dp)
+                                            .size(4.dp)
+                                            .scale(repeatDotScale)
+                                            .clip(CircleShape)
+                                            .background(ink)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1415,38 +1430,14 @@ private fun ShuffleOrderToggleButton(
     shuffleEnabled: Boolean,
     activeInk: Color,
     inactiveInk: Color,
-    accentColor: Color,
-    darkTheme: Boolean,
     onToggle: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val spinRotation = remember { Animatable(0f) }
 
-    val pillBg by animateColorAsState(
-        targetValue = if (shuffleEnabled) {
-            accentColor.copy(alpha = if (darkTheme) 0.22f else 0.14f)
-        } else {
-            Color.Transparent
-        },
-        animationSpec = tween(260),
-        label = "shuffle_pill_bg"
-    )
-    val pillBorder by animateColorAsState(
-        targetValue = if (shuffleEnabled) {
-            accentColor.copy(alpha = if (darkTheme) 0.50f else 0.42f)
-        } else {
-            Color.Transparent
-        },
-        animationSpec = tween(260),
-        label = "shuffle_pill_border"
-    )
     val iconTint by animateColorAsState(
-        targetValue = if (shuffleEnabled) {
-            if (darkTheme) accentColor else accentColor
-        } else {
-            inactiveInk
-        },
-        animationSpec = tween(240),
+        targetValue = if (shuffleEnabled) activeInk else inactiveInk,
+        animationSpec = tween(220),
         label = "shuffle_icon_tint"
     )
     val dotScale by animateFloatAsState(
@@ -1459,8 +1450,6 @@ private fun ShuffleOrderToggleButton(
         modifier = Modifier
             .size(48.dp)
             .clip(CircleShape)
-            .background(pillBg)
-            .border(0.8.dp, pillBorder, CircleShape)
             .bouncyClickable(pressedScale = 0.84f) {
                 onToggle()
                 scope.launch {
@@ -1506,16 +1495,16 @@ private fun ShuffleOrderToggleButton(
             }
         }
 
-        // Crisp subtle indicator dot at bottom of button when Shuffle is active
+        // Subtle bottom indicator dot matching the Repeat button's active indicator
         if (dotScale > 0.02f) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 5.dp)
-                    .size(4.5.dp)
+                    .size(4.dp)
                     .scale(dotScale)
                     .clip(CircleShape)
-                    .background(if (darkTheme) accentColor else activeInk)
+                    .background(activeInk)
             )
         }
     }
