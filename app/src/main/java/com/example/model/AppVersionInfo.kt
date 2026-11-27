@@ -20,8 +20,8 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "0.9.7"
-    const val PREVIOUS_VERSION = "0.9.6"
+    const val CURRENT_VERSION = "0.9.8"
+    const val PREVIOUS_VERSION = "0.9.7"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
     const val APK_COMPAT_LABEL = "安装包兼容版本 1.0 (Build 1)"
 
@@ -49,8 +49,20 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "0.9.7",
+            version = "0.9.8",
             tag = "当前版本",
+            title = "智能音频过渡引擎 · 危险区分级清理 · 歌词灵动弹性波浪 · 顺序/随机旋转过渡与 3.0x 倍速修复",
+            highlights = listOf(
+                "工坊新增「播放引擎与智能过渡」二级菜单，提供 5 种专业切歌过渡模式：无缝直连、柔和淡出淡入、等功率交叉淡化（双路实时叠音）、智能声场混接（同专辑自动缩短衔接、跨专辑丝滑混接、普通音频人声防叠音保护）以及黑胶缓停减速过渡；支持 1.5–10 秒时长调节、手动切歌过渡与暂停/恢复柔滑消噪淡入淡出。",
+                "「数据备份、安全与危险区」新增分级清除数据功能（需连续二次确认，绝不触碰手机本地音频文件）：清空播放器内音频索引并自动封存播放与收藏记录（重新导入相同歌曲时自动恢复）、清除全部播放与配置记录、仅还原全部设置项、一键彻底清空应用内所有数据。",
+                "歌词引擎新增「灵动弹性波浪」增强开关（可在工坊歌词页与歌词舞台「字重」面板快捷开启）：大幅放大歌词切行时的级联拉升位移、纵向弹性伸展与低阻尼弹跳幅度，波浪涟漪扩散范围更广、视觉更具张力。",
+                "重构播放页随机/顺序播放按钮：顺序播放状态采用全新的平行双箭头图标以彻底区分随机交叉箭头，点击后伴随流畅 360° 弹性旋转并丝滑形变过渡到目标图标与高对比激活指示。",
+                "修复普通音频模式下选择 2.5x 与 3.0x 倍速时被引擎上限截断并仍显示 2.0x 的问题，现已完整放开并精准显示 0.5x–3.0x 全档位倍速。"
+            )
+        ),
+        AppReleaseNote(
+            version = "0.9.7",
+            tag = "历史版本",
             title = "工坊多级架构重塑 · 本地设置备份恢复 · 默认应用修复 · 歌词灵动间奏呼吸点",
             highlights = listOf(
                 "重构「工坊（设置页）」为清晰的两级菜单架构：主页聚焦硬件均衡器、AI 对话、曲库导入查重与四大分类入口（外观动效与触觉、多源逐字歌词引擎、曲库展示与扫描筛选、数据备份安全与系统），实时展示摘要并支持流畅侧滑切换与返回。",

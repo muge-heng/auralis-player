@@ -505,18 +505,19 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 8)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 9)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -896,10 +897,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v0.9.7 is active
+        // Liquid Glass is the default nav bar & v0.9.8 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -1062,6 +1063,133 @@ class ExampleUnitTest {
             "Unswept dot must visibly breathe in size across phases (${dot2Trough.scale} vs ${dot2Peak.scale})",
             kotlin.math.abs(dot2Peak.scale - dot2Trough.scale) > 0.12f
         )
+    }
+
+    @Test
+    fun playbackSpeedAllowsUpTo3xAndFormatsGeneralAudioSpeedPillsCleanly() {
+        assertEquals(0.5f, com.example.playback.clampPlaybackSpeed(0.2f), 0.001f)
+        assertEquals(2.5f, com.example.playback.clampPlaybackSpeed(2.5f), 0.001f)
+        assertEquals(3.0f, com.example.playback.clampPlaybackSpeed(3.0f), 0.001f)
+        assertEquals(3.0f, com.example.playback.clampPlaybackSpeed(4.0f), 0.001f)
+
+        assertEquals("1.0x", com.example.playback.formatPlaybackSpeedLabel(1.0f))
+        assertEquals("1.25x", com.example.playback.formatPlaybackSpeedLabel(1.25f))
+        assertEquals("2.5x", com.example.playback.formatPlaybackSpeedLabel(2.5f))
+        assertEquals("3.0x", com.example.playback.formatPlaybackSpeedLabel(3.0f))
+    }
+
+    @Test
+    fun smartAudioTransitionMathHandlesEqualPowerCrossfadeAutoMixAndSpokenAudioSafety() {
+        fun sampleTrack(id: String, album: String, artist: String, general: Boolean = false) = Track(
+            id = id,
+            contentUri = "content://media/$id",
+            title = "Track $id",
+            artist = artist,
+            album = album,
+            durationMs = 240_000L,
+            sizeBytes = 15_000_000L,
+            folderPath = "Music",
+            fileName = "$id.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC",
+            isGeneralAudio = general
+        )
+
+        val albumA1 = sampleTrack("a1", "Midnight Studio", "Auralis")
+        val albumA2 = sampleTrack("a2", "Midnight Studio", "Auralis")
+        val albumB1 = sampleTrack("b1", "Neon Horizon", "Starlight")
+        val podcast = sampleTrack("p1", "Tech Talk", "Host", general = true)
+
+        // 1. AutoMix shortens transition for consecutive same-album tracks, uses full blend across albums
+        val autoMixCfg = com.example.model.AudioTransitionConfig(
+            mode = com.example.model.AudioTransitionMode.AUTOMIX,
+            durationMs = 6000,
+            fadeOnManualSkip = true
+        )
+        val sameAlbumRes = com.example.playback.resolveEffectiveTransition(autoMixCfg, albumA1, albumA2, isManualSkip = false)
+        assertEquals(com.example.model.AudioTransitionMode.AUTOMIX, sameAlbumRes.mode)
+        assertEquals(1600L, sameAlbumRes.durationMs)
+
+        val crossAlbumRes = com.example.playback.resolveEffectiveTransition(autoMixCfg, albumA1, albumB1, isManualSkip = false)
+        assertEquals(com.example.model.AudioTransitionMode.AUTOMIX, crossAlbumRes.mode)
+        assertEquals(6000L, crossAlbumRes.durationMs)
+
+        // 2. Spoken General Audio automatically degrades overlap to Smooth Fade (no voice overlap)
+        val spokenRes = com.example.playback.resolveEffectiveTransition(autoMixCfg, podcast, albumB1, isManualSkip = false)
+        assertEquals(com.example.model.AudioTransitionMode.SMOOTH_FADE, spokenRes.mode)
+        assertTrue(spokenRes.durationMs <= 900L)
+
+        // 3. Equal-power Crossfade maintains constant acoustic energy (out^2 + in^2 ~= 1.0)
+        for (p in listOf(0.0f, 0.25f, 0.5f, 0.75f, 1.0f)) {
+            val g = com.example.playback.computeTransitionGains(com.example.model.AudioTransitionMode.CROSSFADE, p)
+            val energy = g.outgoingGain * g.outgoingGain + g.incomingGain * g.incomingGain
+            assertEquals(1.0f, energy, 0.005f)
+        }
+    }
+
+    @Test
+    fun archivedTrackHistoryPreservesAndAutoRestoresPlayStatsAfterClearingLibrary() {
+        val playedTrack = Track(
+            id = "ms_101",
+            contentUri = "content://media/101",
+            title = "流明 (Lumen)",
+            artist = "星瞳",
+            album = "星·征途",
+            durationMs = 215_000L,
+            sizeBytes = 25_000_000L,
+            folderPath = "Music",
+            fileName = "lumen.flac",
+            mimeType = "audio/flac",
+            codecLabel = "FLAC",
+            isFavorite = true,
+            playCount = 19,
+            lastPlayedAt = 1_760_123_456L
+        )
+        val merged = com.example.data.local.PreferencesRepository.mergeArchivedTrackRecords(emptyList(), listOf(playedTrack))
+        val encoded = com.example.data.local.PreferencesRepository.serializeArchivedTrackRecords(merged)
+        val decoded = com.example.data.local.PreferencesRepository.parseArchivedTrackRecords(encoded)
+        assertEquals(1, decoded.size)
+
+        // Re-import the same audio file later (even with a brand new SAF content ID!)
+        val reimportedFresh = playedTrack.copy(
+            id = "saf_new_999",
+            contentUri = "content://document/999",
+            isFavorite = false,
+            playCount = 0,
+            lastPlayedAt = 0L
+        )
+        val restored = com.example.data.local.PreferencesRepository.applyArchivedRecordsToTracks(
+            listOf(reimportedFresh),
+            decoded
+        ).single()
+
+        assertTrue(restored.isFavorite)
+        assertEquals(19, restored.playCount)
+        assertEquals(1_760_123_456L, restored.lastPlayedAt)
+    }
+
+    @Test
+    fun elasticLyricWaveAmplifiesCascadeImpulseStretchAndBounce() {
+        val standard = com.example.ui.components.resolveLyricWavePhysics(
+            enableElasticWave = false,
+            isActive = true,
+            lineIndex = 4,
+            activeIndex = 4,
+            distanceFromActive = 0
+        )
+        val elastic = com.example.ui.components.resolveLyricWavePhysics(
+            enableElasticWave = true,
+            isActive = true,
+            lineIndex = 4,
+            activeIndex = 4,
+            distanceFromActive = 0
+        )
+        assertTrue(elastic.impulseDp > standard.impulseDp * 2f)
+        assertTrue(elastic.stretchImpulseY > 1.10f)
+        assertEquals(1.0f, standard.stretchImpulseY, 0.001f)
+        assertTrue(elastic.dampingRatio < standard.dampingRatio)
+        assertTrue(elastic.maxDistance > standard.maxDistance)
+        assertTrue(elastic.activeScale > standard.activeScale)
     }
 }
 

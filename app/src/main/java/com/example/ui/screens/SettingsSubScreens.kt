@@ -29,24 +29,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Undo
+import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.FilterAlt
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Smartphone
+import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.TrendingDown
 import androidx.compose.material.icons.rounded.Upload
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -82,6 +90,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.SettingsBackupCodec
+import com.example.model.AudioTransitionConfig
+import com.example.model.AudioTransitionMode
+import com.example.model.DangerZoneAction
 import com.example.model.DeletionGuardMode
 import com.example.model.HapticProfile
 import com.example.model.LYRIC_FONT_SCALE_TIERS
@@ -96,6 +107,7 @@ import com.example.ui.theme.RubyAccent
 import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.adaptiveLyricSourceColor
 import com.example.viewmodel.PendingSettingsBackupImportPreview
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -105,23 +117,27 @@ enum class SettingsSection(
 ) {
     HUB(
         title = "声学工坊与偏好",
-        subtitle = "硬件调音、曲库扫描、歌词引擎、视觉光影与本地配置备份"
+        subtitle = "硬件调音、智能过渡、曲库扫描、歌词引擎、光影视觉与安全清理"
     ),
     APPEARANCE(
         title = "外观、动效与触觉",
         subtitle = "深浅画布、Liquid Glass 悬浮底栏、旗舰光影与阻尼震动"
     ),
+    PLAYBACK_TRANSITION(
+        title = "播放引擎与智能过渡",
+        subtitle = "无缝直连、柔和淡入淡出、等功率交叉淡化、智能混接与黑胶缓停"
+    ),
     LYRICS(
         title = "多源逐字歌词引擎",
-        subtitle = "字重字号、默认聚合源、模拟逐字、译文、景深模糊与沉浸舞台"
+        subtitle = "字重字号、默认聚合源、模拟逐字、灵动弹性波浪、景深模糊与沉浸舞台"
     ),
     LIBRARY_SCAN(
         title = "曲库展示与扫描筛选",
         subtitle = "首页卡片、普通音频区隔离、时长体积门槛与屏蔽目录规则"
     ),
     BACKUP_SYSTEM(
-        title = "数据备份、安全与系统",
-        subtitle = "本地设置导出与恢复、防误删保护机制与系统默认应用入口"
+        title = "数据备份、安全与危险区",
+        subtitle = "本地设置导出与恢复、防误删保护、系统默认应用与分级数据清除"
     )
 }
 
@@ -508,6 +524,256 @@ internal fun AppearanceSettingsSubPage(
     }
 }
 
+@Composable
+internal fun PlaybackTransitionSettingsSubPage(
+    audioTransition: AudioTransitionConfig,
+    onUpdateAudioTransition: (AudioTransitionConfig) -> Unit,
+    onBack: () -> Unit,
+    contentBottomPadding: Int
+) {
+    val goldAccent = adaptiveGoldColor()
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            top = 16.dp,
+            bottom = (contentBottomPadding + 28).dp,
+            start = 16.dp,
+            end = 16.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            SettingsSubPageHeader(
+                title = SettingsSection.PLAYBACK_TRANSITION.title,
+                subtitle = SettingsSection.PLAYBACK_TRANSITION.subtitle,
+                onBack = onBack
+            )
+        }
+
+        item {
+            SettingsCard(
+                icon = Icons.Rounded.SwapHoriz,
+                title = "曲目衔接过渡模式",
+                subtitle = "自由挑选适合无损发烧聆听、专辑连听或氛围歌单的切歌过渡风格"
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AudioTransitionMode.entries.forEach { mode ->
+                        val selected = audioTransition.mode == mode
+                        val modeIcon = when (mode) {
+                            AudioTransitionMode.GAPLESS -> Icons.Rounded.GraphicEq
+                            AudioTransitionMode.SMOOTH_FADE -> Icons.Rounded.TrendingDown
+                            AudioTransitionMode.CROSSFADE -> Icons.Rounded.SwapHoriz
+                            AudioTransitionMode.AUTOMIX -> Icons.Rounded.AutoAwesome
+                            AudioTransitionMode.VINYL_BRAKE -> Icons.Rounded.Album
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (selected) RubyAccent.copy(alpha = 0.14f)
+                                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                                )
+                                .border(
+                                    width = if (selected) 1.dp else 0.6.dp,
+                                    color = if (selected) RubyAccent else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+                                .clickable {
+                                    onUpdateAudioTransition(audioTransition.copy(mode = mode))
+                                }
+                                .padding(horizontal = 12.dp, vertical = 11.dp)
+                                .testTag("settings_transition_mode_${mode.name.lowercase()}"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (selected) RubyAccent.copy(alpha = 0.20f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = modeIcon,
+                                    contentDescription = null,
+                                    tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = mode.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (mode == AudioTransitionMode.AUTOMIX) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(goldAccent.copy(alpha = 0.16f))
+                                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "智能自适应",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = goldAccent,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    } else if (mode == AudioTransitionMode.CROSSFADE) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(EmeraldLossless.copy(alpha = 0.16f))
+                                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "等功率叠加",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = EmeraldLossless,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = mode.subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(
+                                imageVector = if (selected) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = if (selected) "已选中" else "未选中",
+                                tint = if (selected) RubyAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            SettingsCard(
+                icon = Icons.Rounded.GraphicEq,
+                title = "过渡时长与触发细节",
+                subtitle = "精细控制交叉淡化时长、手动切歌响应与暂停/恢复消噪微淡入"
+            ) {
+                if (audioTransition.mode.supportsDurationSlider) {
+                    val secValue = (audioTransition.durationMs / 1000f).coerceIn(1.5f, 10.0f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("自动过渡时长", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = String.format(Locale.US, "%.1f 秒", secValue),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = goldAccent
+                        )
+                    }
+                    Slider(
+                        value = secValue,
+                        onValueChange = { raw ->
+                            val snappedHalfSec = (raw * 2f).roundToInt() / 2f
+                            val ms = (snappedHalfSec * 1000f).roundToInt().coerceIn(1500, 10_000)
+                            if (ms != audioTransition.durationMs) {
+                                onUpdateAudioTransition(audioTransition.copy(durationMs = ms))
+                            }
+                        },
+                        valueRange = 1.5f..10.0f,
+                        steps = 16,
+                        modifier = Modifier.testTag("settings_transition_duration_slider")
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                        thickness = 0.6.dp
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                        Text("手动切歌应用过渡", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = "开启后点击上一首/下一首时采用轻快短时过渡（约 0.6s–1.4s），不拖泥带水",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = audioTransition.fadeOnManualSkip,
+                        enabled = audioTransition.mode != AudioTransitionMode.GAPLESS,
+                        onCheckedChange = {
+                            onUpdateAudioTransition(audioTransition.copy(fadeOnManualSkip = it))
+                        },
+                        modifier = Modifier.testTag("settings_transition_manual_skip_switch")
+                    )
+                }
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                    thickness = 0.6.dp
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                        Text("暂停 / 恢复柔滑淡入淡出", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = "在暂停与继续播放瞬间施加约 160ms 声压包络，消除数字切换突兀断层与爆音",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = audioTransition.fadeOnPlayPause,
+                        onCheckedChange = {
+                            onUpdateAudioTransition(audioTransition.copy(fadeOnPlayPause = it))
+                        },
+                        modifier = Modifier.testTag("settings_transition_play_pause_fade_switch")
+                    )
+                }
+
+                Text(
+                    text = "智能保护：播放「普通音频区」的播客、课程或录音时，重叠交叉淡化会自动降级为柔和淡出淡入，避免两段人声同时叠音；单曲循环与 A-B 复读期间将自动暂停跨曲过渡。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LyricsSettingsSubPage(
@@ -702,6 +968,45 @@ internal fun LyricsSettingsSubPage(
                             onUpdateLyricSettings(lyricSettings.copy(enableLyricBlur = it))
                         },
                         modifier = Modifier.testTag("settings_lyric_blur_switch")
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("灵动弹性波浪", style = MaterialTheme.typography.bodyMedium)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(RubyAccent.copy(alpha = 0.14f))
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "强化弹跳",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = RubyAccent,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        Text(
+                            "大幅放大歌词切行时的级联拉升、纵向弹性伸展与低阻尼回弹幅度，呈现更澎湃的波浪视觉张力",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = lyricSettings.enableElasticLyricWave,
+                        onCheckedChange = {
+                            onUpdateLyricSettings(lyricSettings.copy(enableElasticLyricWave = it))
+                        },
+                        modifier = Modifier.testTag("settings_lyric_elastic_wave_switch")
                     )
                 }
                 Row(
@@ -1020,11 +1325,13 @@ internal fun BackupAndSystemSettingsSubPage(
     onSetDeletionGuardMode: (DeletionGuardMode) -> Unit,
     onExportSettingsBackup: (includeApiKey: Boolean) -> Unit,
     onImportSettingsBackup: () -> Unit,
+    onExecuteDangerZoneAction: (DangerZoneAction) -> Unit,
     onBack: () -> Unit,
     contentBottomPadding: Int
 ) {
     val context = LocalContext.current
     var includeApiKeyInExport by remember { mutableStateOf(false) }
+    var pendingDangerAction by remember { mutableStateOf<DangerZoneAction?>(null) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1126,7 +1433,7 @@ internal fun BackupAndSystemSettingsSubPage(
                 }
 
                 Text(
-                    text = "覆盖范围：深浅主题、底栏样式、视效增强、触觉震动、歌词字重字号与源、扫描筛选规则、10 段 EQ 状态及自定义预设、防误删模式、AI 模型配置、歌单封面设置与音频时间书签。",
+                    text = "覆盖范围：深浅主题、底栏样式、视效增强、触觉震动、智能音频过渡、歌词字重字号/灵动弹性波浪与源、扫描筛选规则、10 段 EQ 状态及自定义预设、防误删模式、AI 模型配置、歌单封面设置与音频时间书签。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1263,7 +1570,278 @@ internal fun BackupAndSystemSettingsSubPage(
                 )
             }
         }
+
+        // Danger Zone: Stratified Data Clearing with Continuous Double Confirmation
+        item {
+            val dangerRed = Color(0xFFE53935)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(dangerRed.copy(alpha = 0.06f))
+                    .border(1.dp, dangerRed.copy(alpha = 0.36f), RoundedCornerShape(22.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(dangerRed.copy(alpha = 0.16f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.WarningAmber,
+                            contentDescription = null,
+                            tint = dangerRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "危险区 · 清除数据",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = dangerRed
+                        )
+                        Text(
+                            text = "均仅清理应用内数据，绝不删除手机本地音频文件；每项操作均需连续二次确认",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                DangerZoneAction.entries.forEach { action ->
+                    val isNuke = action == DangerZoneAction.NUKE_ALL_DATA
+                    val actionIcon = when (action) {
+                        DangerZoneAction.CLEAR_AUDIO_LIBRARY_ONLY -> Icons.Rounded.LibraryMusic
+                        DangerZoneAction.CLEAR_RECORDS_AND_LOGS -> Icons.Rounded.History
+                        DangerZoneAction.RESET_ALL_SETTINGS -> Icons.Rounded.SettingsBackupRestore
+                        DangerZoneAction.NUKE_ALL_DATA -> Icons.Rounded.DeleteForever
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isNuke) dangerRed.copy(alpha = 0.14f)
+                                else MaterialTheme.colorScheme.surfaceContainer
+                            )
+                            .border(
+                                width = if (isNuke) 1.dp else 0.7.dp,
+                                color = if (isNuke) dangerRed.copy(alpha = 0.65f) else dangerRed.copy(alpha = 0.25f),
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { pendingDangerAction = action }
+                            .padding(horizontal = 12.dp, vertical = 11.dp)
+                            .testTag("danger_zone_${action.name.lowercase()}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(dangerRed.copy(alpha = if (isNuke) 0.24f else 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = actionIcon,
+                                contentDescription = null,
+                                tint = dangerRed,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = action.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (isNuke) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (isNuke) dangerRed else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = action.subtitle,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isNuke) dangerRed
+                                    else dangerRed.copy(alpha = 0.14f)
+                                )
+                                .padding(horizontal = 9.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = if (isNuke) "彻底清空" else "清除",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isNuke) Color.White else dangerRed
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    pendingDangerAction?.let { action ->
+        DangerZoneDoubleConfirmDialog(
+            action = action,
+            onConfirmed = {
+                pendingDangerAction = null
+                onExecuteDangerZoneAction(action)
+            },
+            onDismiss = { pendingDangerAction = null }
+        )
+    }
+}
+
+@Composable
+private fun DangerZoneDoubleConfirmDialog(
+    action: DangerZoneAction,
+    onConfirmed: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var step by remember(action) { mutableStateOf(1) }
+    val dangerRed = Color(0xFFE53935)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = if (step == 1) Icons.Rounded.WarningAmber else Icons.Rounded.DeleteForever,
+                contentDescription = null,
+                tint = dangerRed
+            )
+        },
+        title = {
+            Text(
+                text = if (step == 1) {
+                    "确认执行「${action.title}」？ (1/2)"
+                } else {
+                    "最终安全确认 · 即将执行 (2/2)"
+                },
+                fontWeight = FontWeight.Bold,
+                color = if (step == 2) dangerRed else MaterialTheme.colorScheme.onSurface
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (step == 1) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(dangerRed.copy(alpha = 0.10f))
+                            .border(0.7.dp, dangerRed.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "本次将被清除：",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = dangerRed
+                        )
+                        Text(
+                            text = action.step1Impact,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(EmeraldLossless.copy(alpha = 0.10f))
+                            .border(0.7.dp, EmeraldLossless.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "完整保留不受影响：",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = EmeraldLossless
+                        )
+                        Text(
+                            text = action.step1Preserved,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "你正在对 Auralis 执行「${action.title}」。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = action.step2FinalWarning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = dangerRed
+                    )
+                    Text(
+                        text = "提示：手机存储中的本地音频原文件始终完好无损。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            if (step == 1) {
+                Button(
+                    onClick = { step = 2 },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = dangerRed.copy(alpha = 0.88f),
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("danger_zone_step1_continue")
+                ) {
+                    Text("继续下一步 (1/2)")
+                }
+            } else {
+                Button(
+                    onClick = onConfirmed,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = dangerRed,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("danger_zone_step2_execute")
+                ) {
+                    Text("确认立即清除")
+                }
+            }
+        },
+        dismissButton = {
+            if (step == 1) {
+                TextButton(onClick = onDismiss) {
+                    Text("取消")
+                }
+            } else {
+                TextButton(onClick = { step = 1 }) {
+                    Text("返回核对")
+                }
+            }
+        }
+    )
 }
 
 @Composable

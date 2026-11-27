@@ -213,7 +213,8 @@ data class LyricSettings(
     val keepScreenOnInLyrics: Boolean = true,
     val activeOnlineSource: LyricSource = LyricSource.ALL,
     val enableLyricBlur: Boolean = true,
-    val enableImmersiveLyrics: Boolean = false
+    val enableImmersiveLyrics: Boolean = false,
+    val enableElasticLyricWave: Boolean = false
 ) {
     val fontWeightLabel: String
         get() = when {
@@ -304,6 +305,125 @@ data class AudioBookmark(
     val label: String,
     val createdAtMs: Long = 0L
 )
+
+/**
+ * Multi-mode acoustic transition engine modeled after modern Hi-Fi players
+ * (Apple Music AutoMix / Crossfade & Poweramp fading controls).
+ */
+enum class AudioTransitionMode(
+    val label: String,
+    val shortLabel: String,
+    val subtitle: String,
+    val supportsDurationSlider: Boolean
+) {
+    GAPLESS(
+        label = "无缝直连 (Gapless)",
+        shortLabel = "无缝直连",
+        subtitle = "零衰减原生无缝衔接，完整保留现场专辑、交响乐与概念专辑的连贯听感",
+        supportsDurationSlider = false
+    ),
+    SMOOTH_FADE(
+        label = "柔和淡出淡入",
+        shortLabel = "淡出淡入",
+        subtitle = "曲尾以 S 曲线平滑淡出至静谧，随后新曲丝滑淡入，两首歌绝不混叠",
+        supportsDurationSlider = true
+    ),
+    CROSSFADE(
+        label = "等功率交叉淡化",
+        shortLabel = "交叉淡化",
+        subtitle = "双轨实时重叠混音，采用余弦/正弦等功率曲线衔接，过渡全程响度平稳不掉音量",
+        supportsDurationSlider = true
+    ),
+    AUTOMIX(
+        label = "智能声场混接 (AutoMix)",
+        shortLabel = "智能混接",
+        subtitle = "自动识别专辑连贯性与音频类型：同专辑曲目轻吻衔接，跨专辑自动平滑 DJ 混接，普通音频自动避让不串音",
+        supportsDurationSlider = true
+    ),
+    VINYL_BRAKE(
+        label = "黑胶缓停过渡",
+        shortLabel = "黑胶缓停",
+        subtitle = "模拟黑胶唱机离合减速慢刹降调并轻柔收尾，随即干脆切入下一首曲目",
+        supportsDurationSlider = false
+    );
+
+    companion object {
+        fun fromStored(raw: String?): AudioTransitionMode {
+            if (raw.isNullOrBlank()) return GAPLESS
+            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: GAPLESS
+        }
+    }
+}
+
+data class AudioTransitionConfig(
+    val mode: AudioTransitionMode = AudioTransitionMode.GAPLESS,
+    val durationMs: Int = 3500, // 1500..10000 ms
+    val fadeOnManualSkip: Boolean = true,
+    val fadeOnPlayPause: Boolean = true
+) {
+    val durationSecondsLabel: String
+        get() = String.format(java.util.Locale.US, "%.1f 秒", durationMs / 1000f)
+}
+
+/**
+ * Archived play history & favorite snapshot preserved when the user clears only the
+ * player's audio library, allowing seamless auto-restoration when the same audio is re-imported.
+ */
+data class ArchivedTrackRecord(
+    val trackId: String,
+    val fingerprint: String,
+    val playCount: Int,
+    val lastPlayedAt: Long,
+    val isFavorite: Boolean,
+    val isGeneralAudio: Boolean
+)
+
+/**
+ * Four clearly stratified destructive actions in the Settings Danger Zone.
+ * Every action strictly enforces continuous 2-step confirmation.
+ */
+enum class DangerZoneAction(
+    val title: String,
+    val shortTitle: String,
+    val subtitle: String,
+    val step1Impact: String,
+    val step1Preserved: String,
+    val step2FinalWarning: String
+) {
+    CLEAR_AUDIO_LIBRARY_ONLY(
+        title = "清除播放器内全部音频",
+        shortTitle = "仅清除曲库音频",
+        subtitle = "清空曲库与普通音频区列表，绝不删除手机本地原文件；播放次数、红心与歌词等记录完整保留，重新导入同名音乐时自动回填",
+        step1Impact = "将清空播放器曲库与普通音频区中的全部曲目索引，并停止当前播放队列。",
+        step1Preserved = "手机本地音频原文件完好无损；每首歌的播放次数、最近播放、红心收藏、自建歌单、缓存歌词、时间书签、AI 对话与全部设置均会完整保留，重新导入相同音乐时自动恢复播放记录。",
+        step2FinalWarning = "再次确认：确定清空播放器内的全部音频索引吗？后续需要重新扫描或导入才能继续播放。"
+    ),
+    CLEAR_RECORDS_AND_LOGS(
+        title = "清除全部播放与配置记录",
+        shortTitle = "清除播放与记录",
+        subtitle = "清空播放热度、最近播放、红心、歌单与封面配置、已获取歌词、时间书签、自定义 EQ 预设及全部 AI 对话记录",
+        step1Impact = "将永久清除所有播放统计（热度/最近播放/红心）、历史归档、全部自建歌单及歌单封面配置、已匹配/导入的歌词记录、普通音频时间书签、自定义 EQ 预设以及全部 AI 对话窗口。",
+        step1Preserved = "已导入的曲库音频列表、手机本地原文件，以及外观/歌词/扫描/过渡等偏好开关将保持不变。",
+        step2FinalWarning = "最终警告：歌单、播放统计、歌词缓存与 AI 对话记录清空后无法撤销，确定立即清除？"
+    ),
+    RESET_ALL_SETTINGS(
+        title = "还原所有设置项",
+        shortTitle = "还原所有设置",
+        subtitle = "将外观主题、底栏、视效增强、智能过渡、歌词引擎、扫描规则、均衡器与 AI 模型配置重置为出厂默认值",
+        step1Impact = "将重置深浅主题、底栏样式、光影增强、智能过渡、触觉震动、歌词字重字号与动效、扫描筛选规则、均衡器状态、防误删保护及 AI 接口配置（含本地 API 密钥）。",
+        step1Preserved = "已导入的曲库音频、播放统计、自建歌单、缓存歌词、时间书签与 AI 历史对话记录均完整保留。",
+        step2FinalWarning = "最终警告：所有个性化设置与本地 AI 配置都将恢复默认，确定立即还原？"
+    ),
+    NUKE_ALL_DATA(
+        title = "一键清除所有数据",
+        shortTitle = "一键清除全部",
+        subtitle = "彻底清空应用内曲库索引、全部播放/歌单/歌词/AI 记录并还原所有设置，恢复全新初始状态（绝不删除本地音频文件）",
+        step1Impact = "将一次性清空播放器内全部音频索引、播放记录、歌单、歌词缓存、时间书签、自定义 EQ 预设、AI 对话历史，并将全部设置与 AI 密钥还原为出厂初始状态。",
+        step1Preserved = "仅保留手机存储中的本地音频原文件，绝不会删除或修改你的磁盘文件。",
+        step2FinalWarning = "最高级别危险确认：此操作将彻底重置整个应用内数据且不可恢复！确认继续一键清除所有数据？"
+    )
+}
+
 
 
 

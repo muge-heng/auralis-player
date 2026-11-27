@@ -5,6 +5,8 @@ import com.example.model.AiConfig
 import com.example.model.AiProviderType
 import com.example.model.AppVersionInfo
 import com.example.model.AudioBookmark
+import com.example.model.AudioTransitionConfig
+import com.example.model.AudioTransitionMode
 import com.example.model.DEFAULT_AI_MAX_OUTPUT_TOKENS
 import com.example.model.DeletionGuardMode
 import com.example.model.EQ_BAND_COUNT
@@ -37,6 +39,7 @@ data class SettingsBackupSnapshot(
     val deletionGuardMode: DeletionGuardMode = DeletionGuardMode.CONFIRM_DIALOG,
     val scanFilter: ScanFilterConfig = ScanFilterConfig(),
     val lyricSettings: LyricSettings = LyricSettings(),
+    val audioTransition: AudioTransitionConfig = AudioTransitionConfig(),
     val eqState: EqState = EqState(),
     val customEqPresets: List<EqPreset> = emptyList(),
     val aiConfig: AiConfig = AiConfig(),
@@ -72,6 +75,7 @@ private data class SettingsBackupDocument(
     val appearance: AppearanceBackupDto = AppearanceBackupDto(),
     val scanFilter: ScanFilterBackupDto = ScanFilterBackupDto(),
     val lyrics: LyricSettingsBackupDto = LyricSettingsBackupDto(),
+    val audioTransition: AudioTransitionBackupDto = AudioTransitionBackupDto(),
     val equalizer: EqualizerBackupDto = EqualizerBackupDto(),
     val aiConfig: AiConfigBackupDto = AiConfigBackupDto(),
     val aiCatalogPrefs: AiCatalogPrefsBackupDto = AiCatalogPrefsBackupDto(),
@@ -109,7 +113,15 @@ private data class LyricSettingsBackupDto(
     val keepScreenOnInLyrics: Boolean = true,
     val activeOnlineSource: String = LyricSource.ALL.name,
     val enableLyricBlur: Boolean = true,
-    val enableImmersiveLyrics: Boolean = false
+    val enableImmersiveLyrics: Boolean = false,
+    val enableElasticLyricWave: Boolean = false
+)
+
+private data class AudioTransitionBackupDto(
+    val mode: String = AudioTransitionMode.GAPLESS.name,
+    val durationMs: Int = 3500,
+    val fadeOnManualSkip: Boolean = true,
+    val fadeOnPlayPause: Boolean = true
 )
 
 private data class EqPresetBackupDto(
@@ -226,7 +238,14 @@ object SettingsBackupCodec {
                 keepScreenOnInLyrics = snapshot.lyricSettings.keepScreenOnInLyrics,
                 activeOnlineSource = snapshot.lyricSettings.activeOnlineSource.name,
                 enableLyricBlur = snapshot.lyricSettings.enableLyricBlur,
-                enableImmersiveLyrics = snapshot.lyricSettings.enableImmersiveLyrics
+                enableImmersiveLyrics = snapshot.lyricSettings.enableImmersiveLyrics,
+                enableElasticLyricWave = snapshot.lyricSettings.enableElasticLyricWave
+            ),
+            audioTransition = AudioTransitionBackupDto(
+                mode = snapshot.audioTransition.mode.name,
+                durationMs = snapshot.audioTransition.durationMs.coerceIn(1500, 10_000),
+                fadeOnManualSkip = snapshot.audioTransition.fadeOnManualSkip,
+                fadeOnPlayPause = snapshot.audioTransition.fadeOnPlayPause
             ),
             equalizer = EqualizerBackupDto(
                 enabled = snapshot.eqState.enabled,
@@ -394,7 +413,14 @@ object SettingsBackupCodec {
                     keepScreenOnInLyrics = doc.lyrics.keepScreenOnInLyrics,
                     activeOnlineSource = lyricSource,
                     enableLyricBlur = doc.lyrics.enableLyricBlur,
-                    enableImmersiveLyrics = doc.lyrics.enableImmersiveLyrics
+                    enableImmersiveLyrics = doc.lyrics.enableImmersiveLyrics,
+                    enableElasticLyricWave = doc.lyrics.enableElasticLyricWave
+                ),
+                audioTransition = AudioTransitionConfig(
+                    mode = AudioTransitionMode.fromStored(doc.audioTransition.mode),
+                    durationMs = doc.audioTransition.durationMs.coerceIn(1500, 10_000),
+                    fadeOnManualSkip = doc.audioTransition.fadeOnManualSkip,
+                    fadeOnPlayPause = doc.audioTransition.fadeOnPlayPause
                 ),
                 eqState = EqState(
                     enabled = doc.equalizer.enabled,

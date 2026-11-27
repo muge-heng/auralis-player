@@ -103,11 +103,17 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -133,6 +139,7 @@ import com.example.model.RepeatMode
 import com.example.model.Track
 import com.example.model.formatDuration
 import com.example.playback.PlaybackState
+import com.example.playback.formatPlaybackSpeedLabel
 import com.example.ui.components.AudioTrackInfoDialog
 import com.example.ui.components.HeartBurstIconButton
 import com.example.ui.components.LiveEqualizerBars
@@ -791,8 +798,8 @@ fun NowPlayingSheet(
 
                         Box {
                             MiniStudioPill(
-                                text = if (playbackState.playbackSpeed == 1.0f) "1.0x" else "${playbackState.playbackSpeed}x",
-                                active = playbackState.playbackSpeed != 1.0f,
+                                text = formatPlaybackSpeedLabel(playbackState.playbackSpeed),
+                                active = abs(playbackState.playbackSpeed - 1.0f) > 0.01f,
                                 darkTheme = darkTheme,
                                 onClick = { showSpeedMenu = true }
                             )
@@ -806,8 +813,15 @@ fun NowPlayingSheet(
                                     listOf(0.75f, 0.9f, 1.0f, 1.15f, 1.25f, 1.5f, 2.0f)
                                 }
                                 speedOptions.forEach { spd ->
+                                    val isSelected = abs(playbackState.playbackSpeed - spd) < 0.02f
                                     DropdownMenuItem(
-                                        text = { Text("${spd}x 倍速") },
+                                        text = {
+                                            Text(
+                                                text = "${formatPlaybackSpeedLabel(spd)} 倍速",
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        },
                                         onClick = {
                                             onSetSpeed(spd)
                                             showSpeedMenu = false
@@ -942,21 +956,14 @@ fun NowPlayingSheet(
                                 )
                             }
                         } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(CircleShape)
-                                    .bouncyClickable(onClick = onToggleShuffle)
-                                    .testTag("transport_shuffle"),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Shuffle,
-                                    contentDescription = stringResource(R.string.cd_shuffle),
-                                    tint = if (playbackState.shuffleEnabled) ink else mutedInk,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
+                            ShuffleOrderToggleButton(
+                                shuffleEnabled = playbackState.shuffleEnabled,
+                                activeInk = ink,
+                                inactiveInk = mutedInk,
+                                accentColor = accentGold,
+                                darkTheme = darkTheme,
+                                onToggle = onToggleShuffle
+                            )
 
                             Box(
                                 modifier = Modifier
@@ -1343,6 +1350,174 @@ fun NowPlayingSheet(
             onDelete = onRemoveAudioBookmark,
             onDismiss = { showBookmarksDialog = false }
         )
+    }
+}
+
+/**
+ * Distinct Material-Rounded-style icon representing Sequential Order playback (two parallel right arrows),
+ * visually unmistakable against the crossed arrows of Shuffle.
+ */
+private val SequentialOrderIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "SequentialOrder",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        // Top parallel arrow shaft
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.05f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(4.2f, 8.2f)
+            lineTo(19.2f, 8.2f)
+        }
+        // Top arrowhead
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.05f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(15.6f, 4.8f)
+            lineTo(19.4f, 8.2f)
+            lineTo(15.6f, 11.6f)
+        }
+        // Bottom parallel arrow shaft
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.05f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(4.2f, 15.8f)
+            lineTo(19.2f, 15.8f)
+        }
+        // Bottom arrowhead
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.05f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(15.6f, 12.4f)
+            lineTo(19.4f, 15.8f)
+            lineTo(15.6f, 19.2f)
+        }
+    }.build()
+}
+
+@Composable
+private fun ShuffleOrderToggleButton(
+    shuffleEnabled: Boolean,
+    activeInk: Color,
+    inactiveInk: Color,
+    accentColor: Color,
+    darkTheme: Boolean,
+    onToggle: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val spinRotation = remember { Animatable(0f) }
+
+    val pillBg by animateColorAsState(
+        targetValue = if (shuffleEnabled) {
+            accentColor.copy(alpha = if (darkTheme) 0.22f else 0.14f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(260),
+        label = "shuffle_pill_bg"
+    )
+    val pillBorder by animateColorAsState(
+        targetValue = if (shuffleEnabled) {
+            accentColor.copy(alpha = if (darkTheme) 0.50f else 0.42f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(260),
+        label = "shuffle_pill_border"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (shuffleEnabled) {
+            if (darkTheme) accentColor else accentColor
+        } else {
+            inactiveInk
+        },
+        animationSpec = tween(240),
+        label = "shuffle_icon_tint"
+    )
+    val dotScale by animateFloatAsState(
+        targetValue = if (shuffleEnabled) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = 320f),
+        label = "shuffle_dot_scale"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(pillBg)
+            .border(0.8.dp, pillBorder, CircleShape)
+            .bouncyClickable(pressedScale = 0.84f) {
+                onToggle()
+                scope.launch {
+                    val target = spinRotation.value + 360f
+                    spinRotation.animateTo(
+                        targetValue = target,
+                        animationSpec = spring(
+                            dampingRatio = 0.64f,
+                            stiffness = 215f
+                        )
+                    )
+                }
+            }
+            .testTag("transport_shuffle"),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier.graphicsLayer {
+                rotationZ = spinRotation.value
+            },
+            contentAlignment = Alignment.Center
+        ) {
+            AnimatedContent(
+                targetState = shuffleEnabled,
+                transitionSpec = {
+                    (scaleIn(
+                        initialScale = 0.62f,
+                        animationSpec = spring(dampingRatio = 0.62f, stiffness = 280f)
+                    ) + fadeIn(tween(220))) togetherWith
+                        (scaleOut(
+                            targetScale = 0.62f,
+                            animationSpec = tween(150)
+                        ) + fadeOut(tween(150)))
+                },
+                label = "shuffle_order_icon_morph"
+            ) { isShuffle ->
+                Icon(
+                    imageVector = if (isShuffle) Icons.Rounded.Shuffle else SequentialOrderIcon,
+                    contentDescription = if (isShuffle) "随机播放已开启，点击切换为顺序播放" else "顺序播放中，点击开启随机播放",
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        // Crisp subtle indicator dot at bottom of button when Shuffle is active
+        if (dotScale > 0.02f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 5.dp)
+                    .size(4.5.dp)
+                    .scale(dotScale)
+                    .clip(CircleShape)
+                    .background(if (darkTheme) accentColor else activeInk)
+            )
+        }
     }
 }
 

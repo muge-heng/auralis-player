@@ -13,7 +13,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.example.model.AiCatalogAttachmentPrefs
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
+import com.example.model.ArchivedTrackRecord
 import com.example.model.AudioBookmark
+import com.example.model.AudioTransitionConfig
+import com.example.model.AudioTransitionMode
 import com.example.model.DEFAULT_AI_MAX_OUTPUT_TOKENS
 import com.example.model.DeletionGuardMode
 import com.example.model.EQ_BAND_COUNT
@@ -27,6 +30,7 @@ import com.example.model.PlaylistCoverConfig
 import com.example.model.PlaylistCoverMode
 import com.example.model.ReasoningEffortLevel
 import com.example.model.ScanFilterConfig
+import com.example.model.Track
 import com.example.model.normalizeEqBands
 import com.example.model.snapLyricFontScale
 import kotlinx.coroutines.flow.Flow
@@ -70,6 +74,13 @@ class PreferencesRepository(private val context: Context) {
         val LYRIC_ACTIVE_SOURCE = stringPreferencesKey("lyric_active_source")
         val LYRIC_ENABLE_BLUR = booleanPreferencesKey("lyric_enable_blur")
         val LYRIC_ENABLE_IMMERSIVE = booleanPreferencesKey("lyric_enable_immersive")
+        val LYRIC_ENABLE_ELASTIC_WAVE = booleanPreferencesKey("lyric_enable_elastic_wave")
+
+        // Smart Audio Transitions
+        val TRANSITION_MODE = stringPreferencesKey("audio_transition_mode")
+        val TRANSITION_DURATION_MS = intPreferencesKey("audio_transition_duration_ms")
+        val TRANSITION_MANUAL_SKIP = booleanPreferencesKey("audio_transition_manual_skip")
+        val TRANSITION_PLAY_PAUSE = booleanPreferencesKey("audio_transition_play_pause")
 
         // Equalizer (10-Band + Custom Presets)
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
@@ -105,6 +116,9 @@ class PreferencesRepository(private val context: Context) {
 
         // Per-Track Timestamp Bookmarks (General Audio Mode)
         val AUDIO_BOOKMARKS_JSON = stringPreferencesKey("audio_bookmarks_json")
+
+        // Archived Play History & Favorites (preserved when clearing audio library only)
+        val TRACK_HISTORY_ARCHIVE_RAW = stringPreferencesKey("track_history_archive_raw")
     }
 
     val darkThemeFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -166,7 +180,17 @@ class PreferencesRepository(private val context: Context) {
             keepScreenOnInLyrics = prefs[Keys.KEEP_SCREEN_ON_LYRICS] ?: true,
             activeOnlineSource = src,
             enableLyricBlur = prefs[Keys.LYRIC_ENABLE_BLUR] ?: true,
-            enableImmersiveLyrics = prefs[Keys.LYRIC_ENABLE_IMMERSIVE] ?: false
+            enableImmersiveLyrics = prefs[Keys.LYRIC_ENABLE_IMMERSIVE] ?: false,
+            enableElasticLyricWave = prefs[Keys.LYRIC_ENABLE_ELASTIC_WAVE] ?: false
+        )
+    }
+
+    val audioTransitionFlow: Flow<AudioTransitionConfig> = context.auralisDataStore.data.map { prefs ->
+        AudioTransitionConfig(
+            mode = AudioTransitionMode.fromStored(prefs[Keys.TRANSITION_MODE]),
+            durationMs = (prefs[Keys.TRANSITION_DURATION_MS] ?: 3500).coerceIn(1500, 10_000),
+            fadeOnManualSkip = prefs[Keys.TRANSITION_MANUAL_SKIP] ?: true,
+            fadeOnPlayPause = prefs[Keys.TRANSITION_PLAY_PAUSE] ?: true
         )
     }
 
@@ -302,6 +326,16 @@ class PreferencesRepository(private val context: Context) {
             prefs[Keys.LYRIC_ACTIVE_SOURCE] = settings.activeOnlineSource.name
             prefs[Keys.LYRIC_ENABLE_BLUR] = settings.enableLyricBlur
             prefs[Keys.LYRIC_ENABLE_IMMERSIVE] = settings.enableImmersiveLyrics
+            prefs[Keys.LYRIC_ENABLE_ELASTIC_WAVE] = settings.enableElasticLyricWave
+        }
+    }
+
+    suspend fun updateAudioTransition(config: AudioTransitionConfig) {
+        context.auralisDataStore.edit { prefs ->
+            prefs[Keys.TRANSITION_MODE] = config.mode.name
+            prefs[Keys.TRANSITION_DURATION_MS] = config.durationMs.coerceIn(1500, 10_000)
+            prefs[Keys.TRANSITION_MANUAL_SKIP] = config.fadeOnManualSkip
+            prefs[Keys.TRANSITION_PLAY_PAUSE] = config.fadeOnPlayPause
         }
     }
 
@@ -427,6 +461,7 @@ class PreferencesRepository(private val context: Context) {
             deletionGuardMode = deletionGuardModeFlow.first(),
             scanFilter = scanFilterFlow.first(),
             lyricSettings = lyricSettingsFlow.first(),
+            audioTransition = audioTransitionFlow.first(),
             eqState = eqStateFlow.first(),
             customEqPresets = customEqPresetsFlow.first(),
             aiConfig = aiConfigFlow.first(),
@@ -478,6 +513,13 @@ class PreferencesRepository(private val context: Context) {
             prefs[Keys.LYRIC_ACTIVE_SOURCE] = snapshot.lyricSettings.activeOnlineSource.name
             prefs[Keys.LYRIC_ENABLE_BLUR] = snapshot.lyricSettings.enableLyricBlur
             prefs[Keys.LYRIC_ENABLE_IMMERSIVE] = snapshot.lyricSettings.enableImmersiveLyrics
+            prefs[Keys.LYRIC_ENABLE_ELASTIC_WAVE] = snapshot.lyricSettings.enableElasticLyricWave
+
+            // Smart Audio Transition
+            prefs[Keys.TRANSITION_MODE] = snapshot.audioTransition.mode.name
+            prefs[Keys.TRANSITION_DURATION_MS] = snapshot.audioTransition.durationMs.coerceIn(1500, 10_000)
+            prefs[Keys.TRANSITION_MANUAL_SKIP] = snapshot.audioTransition.fadeOnManualSkip
+            prefs[Keys.TRANSITION_PLAY_PAUSE] = snapshot.audioTransition.fadeOnPlayPause
 
             // Equalizer & Custom Presets
             prefs[Keys.EQ_ENABLED] = snapshot.eqState.enabled
@@ -514,6 +556,56 @@ class PreferencesRepository(private val context: Context) {
             prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON] = serializePlaylistCoverConfigsJson(snapshot.playlistCoverConfigs)
             prefs[Keys.AUDIO_BOOKMARKS_JSON] = serializeAudioBookmarksJson(snapshot.audioBookmarks)
         }
+    }
+
+    /**
+     * Archives play counts, last played timestamps, and favorite states before clearing
+     * library audio, so re-importing the same tracks automatically restores their records.
+     */
+    suspend fun archiveTrackRecords(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        context.auralisDataStore.edit { prefs ->
+            val existing = parseArchivedTrackRecords(prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW])
+            val merged = mergeArchivedTrackRecords(existing, tracks)
+            prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW] = serializeArchivedTrackRecords(merged)
+        }
+    }
+
+    suspend fun getArchivedTrackRecords(): List<ArchivedTrackRecord> {
+        val raw = context.auralisDataStore.data.first()[Keys.TRACK_HISTORY_ARCHIVE_RAW]
+        return parseArchivedTrackRecords(raw)
+    }
+
+    suspend fun clearAllUserRecordPrefs() {
+        context.auralisDataStore.edit { prefs ->
+            prefs.remove(Keys.EQ_CUSTOM_PRESETS_JSON)
+            prefs.remove(Keys.PLAYLIST_COVER_CONFIGS_JSON)
+            prefs.remove(Keys.AUDIO_BOOKMARKS_JSON)
+            prefs.remove(Keys.TRACK_HISTORY_ARCHIVE_RAW)
+            prefs.remove(Keys.AI_ATTACH_CATALOG_ENABLED)
+            prefs.remove(Keys.AI_ATTACH_CATALOG_CUSTOMIZED)
+            prefs.remove(Keys.AI_ATTACH_CATALOG_TRACK_IDS)
+            prefs.remove(Keys.AI_ATTACH_CATALOG_LYRIC_IDS)
+        }
+    }
+
+    suspend fun resetAllSettingPrefsOnly() {
+        context.auralisDataStore.edit { prefs ->
+            // Preserve user-created records/archives while resetting all preference settings
+            val keptCustomEq = prefs[Keys.EQ_CUSTOM_PRESETS_JSON]
+            val keptCovers = prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON]
+            val keptBookmarks = prefs[Keys.AUDIO_BOOKMARKS_JSON]
+            val keptArchive = prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW]
+            prefs.clear()
+            if (keptCustomEq != null) prefs[Keys.EQ_CUSTOM_PRESETS_JSON] = keptCustomEq
+            if (keptCovers != null) prefs[Keys.PLAYLIST_COVER_CONFIGS_JSON] = keptCovers
+            if (keptBookmarks != null) prefs[Keys.AUDIO_BOOKMARKS_JSON] = keptBookmarks
+            if (keptArchive != null) prefs[Keys.TRACK_HISTORY_ARCHIVE_RAW] = keptArchive
+        }
+    }
+
+    suspend fun clearAllPreferences() {
+        context.auralisDataStore.edit { it.clear() }
     }
 
     companion object {
@@ -708,6 +800,106 @@ class PreferencesRepository(private val context: Context) {
                 }
             }
             return sb.toString()
+        }
+
+        fun buildTrackHistoryFingerprint(title: String, artist: String, fileName: String): String {
+            val cleanTitle = title.trim().lowercase().replace(Regex("\\s+"), " ")
+            val cleanArtist = artist.trim().lowercase().replace(Regex("\\s+"), " ")
+            val cleanFile = fileName.trim().lowercase()
+            return "$cleanTitle|$cleanArtist|$cleanFile"
+        }
+
+        fun mergeArchivedTrackRecords(
+            existing: List<ArchivedTrackRecord>,
+            tracks: List<Track>
+        ): List<ArchivedTrackRecord> {
+            val byKey = linkedMapOf<String, ArchivedTrackRecord>()
+            existing.forEach { rec ->
+                val key = rec.trackId.ifBlank { rec.fingerprint }
+                if (key.isNotBlank()) byKey[key] = rec
+            }
+            tracks.forEach { t ->
+                if (t.playCount > 0 || t.lastPlayedAt > 0L || t.isFavorite) {
+                    val fp = buildTrackHistoryFingerprint(t.title, t.artist, t.fileName)
+                    val prev = byKey[t.id] ?: byKey.values.firstOrNull { it.fingerprint == fp }
+                    byKey[t.id] = ArchivedTrackRecord(
+                        trackId = t.id,
+                        fingerprint = fp,
+                        playCount = maxOf(t.playCount, prev?.playCount ?: 0),
+                        lastPlayedAt = maxOf(t.lastPlayedAt, prev?.lastPlayedAt ?: 0L),
+                        isFavorite = t.isFavorite || (prev?.isFavorite ?: false),
+                        isGeneralAudio = t.isGeneralAudio
+                    )
+                }
+            }
+            return byKey.values.toList()
+        }
+
+        fun applyArchivedRecordsToTracks(
+            incoming: List<Track>,
+            archived: List<ArchivedTrackRecord>
+        ): List<Track> {
+            if (incoming.isEmpty() || archived.isEmpty()) return incoming
+            val byId = archived.associateBy { it.trackId }
+            val byFingerprint = archived.associateBy { it.fingerprint }
+            return incoming.map { t ->
+                val fp = buildTrackHistoryFingerprint(t.title, t.artist, t.fileName)
+                val match = byId[t.id] ?: byFingerprint[fp]
+                if (match != null) {
+                    t.copy(
+                        playCount = maxOf(t.playCount, match.playCount),
+                        lastPlayedAt = maxOf(t.lastPlayedAt, match.lastPlayedAt),
+                        isFavorite = t.isFavorite || match.isFavorite
+                    )
+                } else {
+                    t
+                }
+            }
+        }
+
+        fun serializeArchivedTrackRecords(records: List<ArchivedTrackRecord>): String {
+            val sb = StringBuilder("AR1")
+            records.forEach { rec ->
+                sb.append('\n')
+                    .append(escapeBookmarkField(rec.trackId)).append('\t')
+                    .append(escapeBookmarkField(rec.fingerprint)).append('\t')
+                    .append(rec.playCount).append('\t')
+                    .append(rec.lastPlayedAt).append('\t')
+                    .append(if (rec.isFavorite) "1" else "0").append('\t')
+                    .append(if (rec.isGeneralAudio) "1" else "0")
+            }
+            return sb.toString()
+        }
+
+        fun parseArchivedTrackRecords(raw: String?): List<ArchivedTrackRecord> {
+            if (raw.isNullOrBlank()) return emptyList()
+            val trimmed = raw.trim()
+            if (!trimmed.startsWith("AR1")) return emptyList()
+            val result = mutableListOf<ArchivedTrackRecord>()
+            trimmed.lineSequence().drop(1).forEach { line ->
+                if (line.isBlank()) return@forEach
+                val parts = line.split('\t')
+                if (parts.size < 6) return@forEach
+                val id = unescapeBookmarkField(parts[0])
+                val fp = unescapeBookmarkField(parts[1])
+                val playCount = parts[2].toIntOrNull() ?: 0
+                val lastPlayed = parts[3].toLongOrNull() ?: 0L
+                val fav = parts[4] == "1"
+                val isGen = parts[5] == "1"
+                if (id.isNotBlank() || fp.isNotBlank()) {
+                    result.add(
+                        ArchivedTrackRecord(
+                            trackId = id,
+                            fingerprint = fp,
+                            playCount = playCount,
+                            lastPlayedAt = lastPlayed,
+                            isFavorite = fav,
+                            isGeneralAudio = isGen
+                        )
+                    )
+                }
+            }
+            return result
         }
     }
 }

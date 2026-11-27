@@ -47,6 +47,7 @@ import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Waves
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -93,9 +94,92 @@ import com.example.model.LyricWord
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScaleIndex
 import com.example.ui.theme.ChampagneGold
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+/**
+ * Pure physics profile for lyric line transition cascade (Standard vs. Enhanced Elastic Wave).
+ */
+data class LyricWavePhysics(
+    val maxDistance: Int,
+    val staggerMs: Long,
+    val impulseDp: Float,
+    val stretchImpulseY: Float,
+    val dampingRatio: Float,
+    val stiffness: Float,
+    val activeLiftDp: Float,
+    val activeScale: Float,
+    val scrollDampingRatio: Float,
+    val scrollStiffness: Float
+)
+
+fun resolveLyricWavePhysics(
+    enableElasticWave: Boolean,
+    isActive: Boolean,
+    lineIndex: Int,
+    activeIndex: Int,
+    distanceFromActive: Int
+): LyricWavePhysics {
+    return if (enableElasticWave) {
+        val stagger = when {
+            isActive -> 0L
+            lineIndex > activeIndex -> (distanceFromActive * 46L).coerceAtMost(280L)
+            else -> (distanceFromActive * 26L).coerceAtMost(160L)
+        }
+        val impulse = when {
+            isActive -> 30f
+            distanceFromActive == 1 -> 24f
+            distanceFromActive == 2 -> 17.5f
+            distanceFromActive == 3 -> 12f
+            else -> 7.5f
+        }
+        val stretchY = when {
+            isActive -> 1.16f
+            distanceFromActive == 1 -> 1.10f
+            distanceFromActive == 2 -> 1.05f
+            else -> 1.02f
+        }
+        LyricWavePhysics(
+            maxDistance = 7,
+            staggerMs = stagger,
+            impulseDp = impulse,
+            stretchImpulseY = stretchY,
+            dampingRatio = if (isActive) 0.40f else 0.48f,
+            stiffness = if (isActive) 185f else 155f,
+            activeLiftDp = -7.5f,
+            activeScale = 1.08f,
+            scrollDampingRatio = 0.54f,
+            scrollStiffness = 145f
+        )
+    } else {
+        val stagger = when {
+            isActive -> 0L
+            lineIndex > activeIndex -> (distanceFromActive * 30L).coerceAtMost(150L)
+            else -> (distanceFromActive * 18L).coerceAtMost(90L)
+        }
+        val impulse = when {
+            isActive -> 13f
+            distanceFromActive == 1 -> 9.5f
+            distanceFromActive == 2 -> 6.5f
+            else -> 4f
+        }
+        LyricWavePhysics(
+            maxDistance = 5,
+            staggerMs = stagger,
+            impulseDp = impulse,
+            stretchImpulseY = 1.0f,
+            dampingRatio = if (isActive) 0.56f else 0.64f,
+            stiffness = if (isActive) 215f else 185f,
+            activeLiftDp = -3f,
+            activeScale = 1.04f,
+            scrollDampingRatio = 0.72f,
+            scrollStiffness = 165f
+        )
+    }
+}
 
 /**
  * Apple Music-caliber Word-by-Word Karaoke Lyric Stage.
@@ -217,11 +301,18 @@ fun LyricStageView(
                 }
                 val scrollDelta = (itemFocalY - targetAnchorOffset).toFloat()
                 if (abs(scrollDelta) > 1.5f) {
+                    val scrollPhysics = resolveLyricWavePhysics(
+                        enableElasticWave = settings.enableElasticLyricWave,
+                        isActive = true,
+                        lineIndex = focalListIndex,
+                        activeIndex = focalListIndex,
+                        distanceFromActive = 0
+                    )
                     listState.animateScrollBy(
                         value = scrollDelta,
                         animationSpec = spring(
-                            dampingRatio = 0.72f,
-                            stiffness = 165f
+                            dampingRatio = scrollPhysics.scrollDampingRatio,
+                            stiffness = scrollPhysics.scrollStiffness
                         )
                     )
                 }
@@ -582,6 +673,36 @@ fun LyricStageView(
                                 }
                             )
                         }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Waves,
+                                    contentDescription = null,
+                                    tint = accentInk,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "灵动弹性波浪",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = ink
+                                )
+                            }
+                            Switch(
+                                checked = settings.enableElasticLyricWave,
+                                onCheckedChange = {
+                                    onUpdateLyricSettings(settings.copy(enableElasticLyricWave = it))
+                                },
+                                modifier = Modifier.testTag("lyric_stage_elastic_wave_switch")
+                            )
+                        }
                     }
                 }
             }
@@ -668,6 +789,7 @@ fun LyricStageView(
                                 fontWeightValue = settings.fontWeight,
                                 showTranslation = settings.showTranslation,
                                 enableProgressiveBlur = settings.enableLyricBlur && !isUserBrowsing,
+                                enableElasticWave = settings.enableElasticLyricWave,
                                 isUserBrowsing = isUserBrowsing,
                                 darkTheme = darkTheme,
                                 enableWordAnimation = line.words.isNotEmpty() &&
@@ -714,54 +836,82 @@ private fun LyricLineRow(
     fontWeightValue: Int,
     showTranslation: Boolean,
     enableProgressiveBlur: Boolean,
+    enableElasticWave: Boolean,
     isUserBrowsing: Boolean,
     darkTheme: Boolean,
     enableWordAnimation: Boolean,
     onClick: () -> Unit
 ) {
     val density = LocalDensity.current
+    val wavePhysics = remember(enableElasticWave, isActive, lineIndex, activeIndex, distanceFromActive) {
+        resolveLyricWavePhysics(
+            enableElasticWave = enableElasticWave,
+            isActive = isActive,
+            lineIndex = lineIndex,
+            activeIndex = activeIndex,
+            distanceFromActive = distanceFromActive
+        )
+    }
 
-    // Staggered Apple Music cascade micro-bounce when active lyric line advances
+    // Staggered Apple Music cascade bounce & elastic vertical stretch when active lyric line advances
     val waveBouncePx = remember { Animatable(0f) }
-    LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0 && !isUserBrowsing && stepDirection != 0 && distanceFromActive <= 5) {
-            val staggerMs = when {
-                isActive -> 0L
-                lineIndex > activeIndex -> (distanceFromActive * 30L).coerceAtMost(150L)
-                else -> (distanceFromActive * 18L).coerceAtMost(90L)
-            }
-            if (staggerMs > 0L) delay(staggerMs)
-            val impulseDp = when {
-                isActive -> 13f
-                distanceFromActive == 1 -> 9.5f
-                distanceFromActive == 2 -> 6.5f
-                else -> 4f
-            } * stepDirection
-            val impulsePx = with(density) { impulseDp.dp.toPx() }
+    val waveStretchY = remember { Animatable(1f) }
+    LaunchedEffect(activeIndex, enableElasticWave) {
+        if (activeIndex >= 0 && !isUserBrowsing && stepDirection != 0 && distanceFromActive <= wavePhysics.maxDistance) {
+            if (wavePhysics.staggerMs > 0L) delay(wavePhysics.staggerMs)
+            val impulsePx = with(density) { (wavePhysics.impulseDp * stepDirection).dp.toPx() }
             waveBouncePx.snapTo(impulsePx)
-            waveBouncePx.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = if (isActive) 0.56f else 0.64f,
-                    stiffness = if (isActive) 215f else 185f
-                )
-            )
+            if (wavePhysics.stretchImpulseY > 1.001f) {
+                waveStretchY.snapTo(wavePhysics.stretchImpulseY)
+            } else {
+                waveStretchY.snapTo(1f)
+            }
+            coroutineScope {
+                launch {
+                    waveBouncePx.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(
+                            dampingRatio = wavePhysics.dampingRatio,
+                            stiffness = wavePhysics.stiffness
+                        )
+                    )
+                }
+                if (wavePhysics.stretchImpulseY > 1.001f) {
+                    launch {
+                        waveStretchY.animateTo(
+                            targetValue = 1f,
+                            animationSpec = spring(
+                                dampingRatio = (wavePhysics.dampingRatio + 0.04f).coerceAtMost(0.65f),
+                                stiffness = wavePhysics.stiffness * 1.08f
+                            )
+                        )
+                    }
+                }
+            }
         } else {
             waveBouncePx.snapTo(0f)
+            waveStretchY.snapTo(1f)
         }
     }
     LaunchedEffect(isUserBrowsing) {
-        if (isUserBrowsing && waveBouncePx.value != 0f) {
-            waveBouncePx.animateTo(0f, tween(150))
+        if (isUserBrowsing) {
+            coroutineScope {
+                if (waveBouncePx.value != 0f) {
+                    launch { waveBouncePx.animateTo(0f, tween(150)) }
+                }
+                if (waveStretchY.value != 1f) {
+                    launch { waveStretchY.animateTo(1f, tween(150)) }
+                }
+            }
         }
     }
 
-    // Subtle resting buoyancy lift for the currently active line
+    // Buoyancy lift for the currently active line (more expressive in Elastic Wave mode)
     val activeLiftDp by animateDpAsState(
-        targetValue = if (isActive) (-3).dp else 0.dp,
+        targetValue = if (isActive) wavePhysics.activeLiftDp.dp else 0.dp,
         animationSpec = spring(
-            dampingRatio = 0.62f,
-            stiffness = 230f
+            dampingRatio = if (enableElasticWave) 0.48f else 0.62f,
+            stiffness = if (enableElasticWave) 200f else 230f
         ),
         label = "lyric_active_lift"
     )
@@ -783,7 +933,7 @@ private fun LyricLineRow(
 
     // Progressive scale-down on non-active lines (anchored left so alignment stays editorial & crisp)
     val targetScale = when {
-        isActive -> 1.04f
+        isActive -> wavePhysics.activeScale
         isUserBrowsing -> 0.90f
         distanceFromActive == 1 -> 0.85f
         distanceFromActive == 2 -> 0.82f
@@ -793,8 +943,8 @@ private fun LyricLineRow(
     val animatedScale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = spring(
-            dampingRatio = 0.64f,
-            stiffness = 230f
+            dampingRatio = if (enableElasticWave) 0.48f else 0.64f,
+            stiffness = if (enableElasticWave) 205f else 230f
         ),
         label = "lyric_scale"
     )
@@ -848,7 +998,7 @@ private fun LyricLineRow(
             .graphicsLayer {
                 translationY = waveBouncePx.value + activeLiftPx
                 scaleX = animatedScale
-                scaleY = animatedScale
+                scaleY = animatedScale * waveStretchY.value
                 transformOrigin = TransformOrigin(0f, 0.5f)
                 alpha = animatedAlpha
             }

@@ -211,6 +211,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
     val scanProgress by viewModel.scanProgress.collectAsStateWithLifecycle()
     val currentLyric by viewModel.currentLyric.collectAsStateWithLifecycle()
     val lyricSettings by viewModel.lyricSettings.collectAsStateWithLifecycle()
+    val audioTransition by viewModel.audioTransition.collectAsStateWithLifecycle()
     val onlineLyricSearch by viewModel.onlineLyricSearch.collectAsStateWithLifecycle()
     val eqState by viewModel.eqState.collectAsStateWithLifecycle()
     val customEqPresets by viewModel.customEqPresets.collectAsStateWithLifecycle()
@@ -785,6 +786,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             hapticProfile = hapticProfile,
                             scanFilter = scanFilter,
                             lyricSettings = lyricSettings,
+                            audioTransition = audioTransition,
                             aiConfig = aiConfig,
                             onSetDarkTheme = viewModel::setDarkTheme,
                             onSetNavBarStyle = viewModel::setNavBarStyle,
@@ -795,6 +797,8 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                             onSetHapticProfile = viewModel::setHapticProfile,
                             onUpdateScanFilter = viewModel::updateScanFilter,
                             onUpdateLyricSettings = viewModel::updateLyricSettings,
+                            onUpdateAudioTransition = viewModel::updateAudioTransition,
+                            onExecuteDangerZoneAction = viewModel::executeDangerZoneAction,
                             onTriggerRescan = ::requestSmartScanDialog,
                             onImportAudioFiles = { audioPickerLauncher.launch(arrayOf("audio/*")) },
                             onImportFolder = { folderPickerLauncher.launch(null) },

@@ -37,8 +37,10 @@ import com.example.model.AiErrorReport
 import com.example.model.AiSessionRuntimeState
 import com.example.model.AiSuggestedPlaylist
 import com.example.model.AudioBookmark
+import com.example.model.AudioTransitionConfig
 import com.example.model.AuraPalette
 import com.example.model.CustomLyricEntity
+import com.example.model.DangerZoneAction
 import com.example.model.DeletionGuardMode
 import com.example.model.EqPreset
 import com.example.model.EqState
@@ -191,6 +193,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     val lyricSettings: StateFlow<LyricSettings> = prefs.lyricSettingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), LyricSettings())
+
+    val audioTransition: StateFlow<AudioTransitionConfig> = prefs.audioTransitionFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AudioTransitionConfig())
 
     val eqState: StateFlow<EqState> = prefs.eqStateFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), EqState())
@@ -432,6 +437,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
+            prefs.audioTransitionFlow.collect { config ->
+                playbackController.transitionConfig = config
+            }
+        }
+        viewModelScope.launch {
             // ONLY re-parse active lyric when enableSimulatedWordByWord actually flips!
             // Prevents lag when adjusting fontScale / fontWeight / blur.
             prefs.lyricSettingsFlow
@@ -506,7 +516,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 val analysis = withContext(Dispatchers.Default) {
                     TrackDeduplicator.analyzeImportCandidates(scanned, existingList)
                 }
-                val toUpsert = analysis.updatedExistingTracks + analysis.newTracks
+                val toUpsert = enrichTracksWithArchivedHistory(analysis.updatedExistingTracks + analysis.newTracks)
                 if (toUpsert.isNotEmpty()) {
                     trackDao.upsertAll(toUpsert)
                 }
@@ -548,7 +558,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 val analysis = withContext(Dispatchers.Default) {
                     TrackDeduplicator.analyzeImportCandidates(imported, existingList)
                 }
-                val toUpsert = analysis.updatedExistingTracks + analysis.newTracks
+                val toUpsert = enrichTracksWithArchivedHistory(analysis.updatedExistingTracks + analysis.newTracks)
                 if (toUpsert.isNotEmpty()) {
                     trackDao.upsertAll(toUpsert)
                 }
@@ -570,10 +580,12 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     )
                 )
                 if (playImmediately) {
-                    val targetToPlay = analysis.newTracks.firstOrNull()
+                    val targetToPlay = toUpsert.firstOrNull { t -> analysis.newTracks.any { it.id == t.id } }
                         ?: existingList.firstOrNull { TrackDeduplicator.areSameSong(it, imported.first()) }
                         ?: imported.first()
-                    playTrack(targetToPlay, analysis.newTracks.ifEmpty { listOf(targetToPlay) })
+                    val queueCandidates = toUpsert.filter { t -> analysis.newTracks.any { it.id == t.id } }
+                        .ifEmpty { listOf(targetToPlay) }
+                    playTrack(targetToPlay, queueCandidates)
                     _openNowPlayingTrigger.value = true
                 }
             } else {
@@ -593,7 +605,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 val analysis = withContext(Dispatchers.Default) {
                     TrackDeduplicator.analyzeImportCandidates(imported, existingList)
                 }
-                val toUpsert = analysis.updatedExistingTracks + analysis.newTracks
+                val toUpsert = enrichTracksWithArchivedHistory(analysis.updatedExistingTracks + analysis.newTracks)
                 if (toUpsert.isNotEmpty()) {
                     trackDao.upsertAll(toUpsert)
                 }
@@ -619,6 +631,13 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             }
             _scanProgress.value = ScanProgress(isScanning = false)
         }
+    }
+
+    private suspend fun enrichTracksWithArchivedHistory(tracks: List<Track>): List<Track> {
+        if (tracks.isEmpty()) return tracks
+        val archived = prefs.getArchivedTrackRecords()
+        if (archived.isEmpty()) return tracks
+        return PreferencesRepository.applyArchivedRecordsToTracks(tracks, archived)
     }
 
     private fun buildImportSummaryBanner(
@@ -665,8 +684,9 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                     )
                     candidate
                 } else {
-                    trackDao.upsert(candidate)
-                    candidate
+                    val enriched = enrichTracksWithArchivedHistory(listOf(candidate)).first()
+                    trackDao.upsert(enriched)
+                    enriched
                 }
             }
             val fullList = trackDao.getAllTracksSnapshot()
@@ -2799,6 +2819,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
                 )
                 haptics.profile = pending.parsed.snapshot.hapticProfile
                 AcousticDspEngine.applyState(pending.parsed.snapshot.eqState)
+                playbackController.transitionConfig = pending.parsed.snapshot.audioTransition
             }.fold(
                 onSuccess = {
                     haptics.harmonicChime()
@@ -2813,6 +2834,127 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
 
     fun dismissImportSettingsBackup() {
         _pendingSettingsBackupImport.value = null
+    }
+
+    // ── Smart Audio Transitions ──
+
+    fun updateAudioTransition(config: AudioTransitionConfig) {
+        haptics.tickLight()
+        playbackController.transitionConfig = config
+        viewModelScope.launch {
+            prefs.updateAudioTransition(config)
+        }
+    }
+
+    // ── Danger Zone: Stratified Data Clearing (never touches local storage files) ──
+
+    fun executeDangerZoneAction(action: DangerZoneAction) {
+        haptics.springImpact()
+        viewModelScope.launch {
+            runCatching {
+                when (action) {
+                    DangerZoneAction.CLEAR_AUDIO_LIBRARY_ONLY -> {
+                        val existingTracks = withContext(Dispatchers.IO) { trackDao.getAllTracksSnapshot() }
+                        val archivedCount = existingTracks.count {
+                            it.playCount > 0 || it.lastPlayedAt > 0L || it.isFavorite
+                        }
+                        if (archivedCount > 0) {
+                            prefs.archiveTrackRecords(existingTracks)
+                        }
+                        playbackController.clearQueueAndStop()
+                        _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
+                        _auraPalette.value = AuraPalette()
+                        _pendingImportConflicts.value = emptyList()
+                        withContext(Dispatchers.IO) {
+                            trackDao.clearAll()
+                        }
+                        val note = if (archivedCount > 0) {
+                            "已清空播放器内全部音频索引（已封存 $archivedCount 首曲目的播放与收藏记录，重新导入后自动加载，本地文件未受影响）"
+                        } else {
+                            "已清空播放器内全部音频索引（未触碰本地存储文件）"
+                        }
+                        showBanner(note, StatusToastLevel.SUCCESS)
+                    }
+
+                    DangerZoneAction.CLEAR_RECORDS_AND_LOGS -> {
+                        aiSessionJobs.values.forEach { it.cancel() }
+                        aiSessionJobs.clear()
+                        _aiSessionRuntimeStates.value = emptyMap()
+                        _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
+                        withContext(Dispatchers.IO) {
+                            trackDao.clearAllFavoritesAndPlayStats()
+                            customLyricDao.clearAllCustomLyrics()
+                            playlistDao.clearAllPlaylistTracks()
+                            playlistDao.clearAllPlaylists()
+                            aiChatDao.clearAllMessages()
+                            aiChatDao.clearAllSessions()
+                        }
+                        prefs.clearAllUserRecordPrefs()
+                        val cfg = prefs.aiConfigFlow.first()
+                        val freshSessionId = withContext(Dispatchers.IO) {
+                            aiChatDao.insertSession(
+                                AiChatSessionEntity(
+                                    title = "声学与音乐对话",
+                                    modelId = cfg.deepSeekModelId,
+                                    reasoningEffort = cfg.reasoningEffort.apiValue
+                                )
+                            )
+                        }
+                        _activeAiSessionId.value = freshSessionId
+                        showBanner("已清除全部播放记录、歌单、歌词缓存、自定义预设与 AI 对话记录", StatusToastLevel.SUCCESS)
+                    }
+
+                    DangerZoneAction.RESET_ALL_SETTINGS -> {
+                        prefs.resetAllSettingPrefsOnly()
+                        haptics.profile = HapticProfile.STUDIO
+                        AcousticDspEngine.applyState(EqState())
+                        playbackController.transitionConfig = AudioTransitionConfig()
+                        showBanner("已将全部偏好设置项还原为出厂默认值", StatusToastLevel.SUCCESS)
+                    }
+
+                    DangerZoneAction.NUKE_ALL_DATA -> {
+                        aiSessionJobs.values.forEach { it.cancel() }
+                        aiSessionJobs.clear()
+                        _aiSessionRuntimeStates.value = emptyMap()
+                        playbackController.clearQueueAndStop()
+                        _currentLyric.value = LyricDocument(LyricFormat.NONE, emptyList())
+                        _auraPalette.value = AuraPalette()
+                        _pendingImportConflicts.value = emptyList()
+                        _searchQuery.value = ""
+                        _selectedFolder.value = null
+                        _formatFilter.value = LibraryFilterFormat.ALL
+                        _sortOption.value = LibrarySortOption.RECENT
+                        withContext(Dispatchers.IO) {
+                            trackDao.clearAll()
+                            customLyricDao.clearAllCustomLyrics()
+                            playlistDao.clearAllPlaylistTracks()
+                            playlistDao.clearAllPlaylists()
+                            aiChatDao.clearAllMessages()
+                            aiChatDao.clearAllSessions()
+                        }
+                        prefs.clearAllPreferences()
+                        haptics.profile = HapticProfile.STUDIO
+                        AcousticDspEngine.applyState(EqState())
+                        playbackController.transitionConfig = AudioTransitionConfig()
+                        val defaultCfg = AiConfig()
+                        val freshSessionId = withContext(Dispatchers.IO) {
+                            aiChatDao.insertSession(
+                                AiChatSessionEntity(
+                                    title = "声学与音乐对话",
+                                    modelId = defaultCfg.deepSeekModelId,
+                                    reasoningEffort = defaultCfg.reasoningEffort.apiValue
+                                )
+                            )
+                        }
+                        _activeAiSessionId.value = freshSessionId
+                        showBanner("已彻底清空应用内全部数据并恢复初始状态（本地音频文件完好无损）", StatusToastLevel.SUCCESS)
+                    }
+                }
+            }.onFailure { err ->
+                Log.e(TAG, "Danger zone action failed: $action", err)
+                showBanner("清除操作未完成：${err.localizedMessage ?: "发生未知错误"}", StatusToastLevel.ERROR)
+            }
+        }
     }
 
     private fun resolveDisplayName(uri: Uri): String? {

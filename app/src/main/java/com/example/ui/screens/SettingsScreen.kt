@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,6 +72,9 @@ import androidx.compose.ui.unit.dp
 import com.example.model.AiConfig
 import com.example.model.AiProviderType
 import com.example.model.AppVersionInfo
+import com.example.model.AudioTransitionConfig
+import com.example.model.AudioTransitionMode
+import com.example.model.DangerZoneAction
 import com.example.model.DeletionGuardMode
 import com.example.model.HapticProfile
 import com.example.model.LyricSettings
@@ -81,6 +85,7 @@ import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.RubyAccent
 import com.example.ui.theme.adaptiveGoldColor
 import com.example.viewmodel.PendingSettingsBackupImportPreview
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +99,7 @@ fun SettingsScreen(
     hapticProfile: HapticProfile,
     scanFilter: ScanFilterConfig,
     lyricSettings: LyricSettings,
+    audioTransition: AudioTransitionConfig = AudioTransitionConfig(),
     aiConfig: AiConfig,
     onSetDarkTheme: (Boolean) -> Unit,
     onSetNavBarStyle: (NavBarStyle) -> Unit,
@@ -104,6 +110,8 @@ fun SettingsScreen(
     onSetHapticProfile: (HapticProfile) -> Unit,
     onUpdateScanFilter: (ScanFilterConfig) -> Unit,
     onUpdateLyricSettings: (LyricSettings) -> Unit,
+    onUpdateAudioTransition: (AudioTransitionConfig) -> Unit = {},
+    onExecuteDangerZoneAction: (DangerZoneAction) -> Unit = {},
     onTriggerRescan: () -> Unit,
     onImportAudioFiles: () -> Unit,
     onImportFolder: () -> Unit,
@@ -148,6 +156,7 @@ fun SettingsScreen(
                 hapticProfile = hapticProfile,
                 scanFilter = scanFilter,
                 lyricSettings = lyricSettings,
+                audioTransition = audioTransition,
                 deletionGuardMode = deletionGuardMode,
                 aiConfig = aiConfig,
                 duplicateGroupCount = duplicateGroupCount,
@@ -176,6 +185,13 @@ fun SettingsScreen(
                 contentBottomPadding = contentBottomPadding
             )
 
+            SettingsSection.PLAYBACK_TRANSITION -> PlaybackTransitionSettingsSubPage(
+                audioTransition = audioTransition,
+                onUpdateAudioTransition = onUpdateAudioTransition,
+                onBack = { activeSection = SettingsSection.HUB },
+                contentBottomPadding = contentBottomPadding
+            )
+
             SettingsSection.LYRICS -> LyricsSettingsSubPage(
                 lyricSettings = lyricSettings,
                 onUpdateLyricSettings = onUpdateLyricSettings,
@@ -200,6 +216,7 @@ fun SettingsScreen(
                 onSetDeletionGuardMode = onSetDeletionGuardMode,
                 onExportSettingsBackup = onExportSettingsBackup,
                 onImportSettingsBackup = onImportSettingsBackup,
+                onExecuteDangerZoneAction = onExecuteDangerZoneAction,
                 onBack = { activeSection = SettingsSection.HUB },
                 contentBottomPadding = contentBottomPadding
             )
@@ -281,6 +298,7 @@ private fun SettingsHubContent(
     hapticProfile: HapticProfile,
     scanFilter: ScanFilterConfig,
     lyricSettings: LyricSettings,
+    audioTransition: AudioTransitionConfig,
     deletionGuardMode: DeletionGuardMode,
     aiConfig: AiConfig,
     duplicateGroupCount: Int,
@@ -303,18 +321,27 @@ private fun SettingsHubContent(
         append(" · ")
         append(hapticProfile.label)
     }
+    val transitionSummary = buildString {
+        append(audioTransition.mode.label)
+        if (audioTransition.mode.supportsDurationSlider) {
+            append(" · ")
+            append(String.format(Locale.US, "%.1fs", audioTransition.durationMs / 1000f))
+        }
+        if (audioTransition.fadeOnPlayPause) append(" · 暂停淡出")
+    }
     val lyricSummary = buildString {
         append("字重 ${lyricSettings.fontWeight}")
         append(" · ")
         append(lyricFontScaleLabel(lyricSettings.fontScale).substringBefore(" "))
         append(" · ")
         append(lyricSettings.activeOnlineSource.displayName)
-        if (lyricSettings.enableLyricBlur) append(" · 景深模糊")
+        if (lyricSettings.enableElasticLyricWave) append(" · 弹性波浪")
+        else if (lyricSettings.enableLyricBlur) append(" · 景深模糊")
     }
     val librarySummary =
         "≥${scanFilter.minDurationSec}秒 · ≥${scanFilter.minSizeKb}KB · ${scanFilter.excludedFolders.size} 个屏蔽目录"
     val backupSystemSummary =
-        "${deletionGuardMode.shortLabel} · 本地 JSON 备份恢复 · 系统默认应用"
+        "${deletionGuardMode.shortLabel} · 本地备份恢复 · 危险区清除"
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -539,10 +566,27 @@ private fun SettingsHubContent(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
                 )
                 SettingsCategoryRow(
+                    icon = Icons.Rounded.SwapHoriz,
+                    iconTint = Color(0xFF42A5F5),
+                    title = SettingsSection.PLAYBACK_TRANSITION.title,
+                    summary = transitionSummary,
+                    badge = if (audioTransition.mode != AudioTransitionMode.GAPLESS) audioTransition.mode.shortLabel else null,
+                    badgeColor = Color(0xFF42A5F5),
+                    onClick = { onNavigateSection(SettingsSection.PLAYBACK_TRANSITION) },
+                    testTag = "settings_nav_playback_transition"
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    thickness = 0.5.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                )
+                SettingsCategoryRow(
                     icon = Icons.Rounded.Lyrics,
                     iconTint = goldAccent,
                     title = SettingsSection.LYRICS.title,
                     summary = lyricSummary,
+                    badge = if (lyricSettings.enableElasticLyricWave) "弹性波浪" else null,
+                    badgeColor = RubyAccent,
                     onClick = { onNavigateSection(SettingsSection.LYRICS) },
                     testTag = "settings_nav_lyrics"
                 )
@@ -569,7 +613,7 @@ private fun SettingsHubContent(
                     iconTint = MaterialTheme.colorScheme.primary,
                     title = SettingsSection.BACKUP_SYSTEM.title,
                     summary = backupSystemSummary,
-                    badge = "备份/默认",
+                    badge = "备份/清理",
                     badgeColor = goldAccent,
                     onClick = { onNavigateSection(SettingsSection.BACKUP_SYSTEM) },
                     testTag = "settings_nav_backup_system"

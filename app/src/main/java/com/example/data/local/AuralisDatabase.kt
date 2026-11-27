@@ -71,6 +71,9 @@ interface TrackDao {
     @Query("UPDATE tracks SET playCount = 0")
     suspend fun clearMostPlayedStats()
 
+    @Query("UPDATE tracks SET isFavorite = 0, playCount = 0, lastPlayedAt = 0")
+    suspend fun clearAllFavoritesAndPlayStats()
+
     @Query("DELETE FROM tracks")
     suspend fun clearAll()
 }
@@ -115,6 +118,12 @@ interface PlaylistDao {
 
     @Query("UPDATE playlist_tracks SET position = :position WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun updateTrackPosition(playlistId: Long, trackId: String, position: Int)
+
+    @Query("DELETE FROM playlist_tracks")
+    suspend fun clearAllPlaylistTracks()
+
+    @Query("DELETE FROM playlists")
+    suspend fun clearAllPlaylists()
 }
 
 @Dao
@@ -130,6 +139,9 @@ interface CustomLyricDao {
 
     @Query("DELETE FROM custom_lyrics WHERE trackId = :trackId")
     suspend fun deleteCustomLyric(trackId: String)
+
+    @Query("DELETE FROM custom_lyrics")
+    suspend fun clearAllCustomLyrics()
 }
 
 @Dao
@@ -166,6 +178,12 @@ interface AiChatDao {
 
     @Query("DELETE FROM ai_chat_messages WHERE id = :messageId")
     suspend fun deleteMessage(messageId: Long)
+
+    @Query("DELETE FROM ai_chat_messages")
+    suspend fun clearAllMessages()
+
+    @Query("DELETE FROM ai_chat_sessions")
+    suspend fun clearAllSessions()
 }
 
 @Database(
