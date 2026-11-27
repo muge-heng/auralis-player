@@ -1,0 +1,86 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: "Git tag or branch to build (e.g. v1.0.0 or main)"
+        required: false
+        default: "main"
+        type: string
+      apk_version:
+        description: "Version label for APK filename (e.g. v1.0.0)"
+        required: false
+        default: "v1.0.0"
+        type: string
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref || github.ref }}
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Accept Android SDK licenses
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Prepare release signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'auralis-release-2026' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'auralis-release-2026' }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > my-upload-key.jks
+          else
+            keytool -genkeypair -v               -keystore my-upload-key.jks               -alias upload               -keyalg RSA -keysize 2048 -validity 10000               -storepass "$STORE_PASSWORD"               -keypass "$KEY_PASSWORD"               -dname "CN=Auralis, OU=DeepSleep, O=Auralis, L=Xuzhou, ST=Jiangsu, C=CN"
+          fi
+
+      - name: Build signed Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || 'auralis-release-2026' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'auralis-release-2026' }}
+        run: |
+          gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Stage named APK
+        env:
+          APK_VERSION: ${{ inputs.apk_version || github.ref_name }}
+        run: |
+          mkdir -p dist-apk
+          APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_SRC" ]; then
+            echo "No release APK found!"
+            exit 1
+          fi
+          OUT_NAME="Auralis-${APK_VERSION}.apk"
+          cp "$APK_SRC" "dist-apk/${OUT_NAME}"
+          ls -lh "dist-apk/${OUT_NAME}"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auralis-apk
+          path: dist-apk/*.apk
+          if-no-files-found: error
