@@ -182,7 +182,7 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), NavBarStyle.FLOATING_GLASS)
 
     val visualEffectsEnhanced: StateFlow<Boolean> = prefs.visualEffectsEnhancedFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val showLibraryHero: StateFlow<Boolean> = prefs.showLibraryHeroFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
@@ -524,9 +524,11 @@ class AuralisViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
-            prefs.eqStateFlow.collect { state ->
-                AcousticDspEngine.applyState(state)
-            }
+            prefs.eqStateFlow
+                .distinctUntilChanged()
+                .collect { state ->
+                    AcousticDspEngine.applyState(state)
+                }
         }
         viewModelScope.launch {
             prefs.audioTransitionFlow.collect { config ->

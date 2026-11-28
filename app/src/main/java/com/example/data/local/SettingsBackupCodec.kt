@@ -32,7 +32,7 @@ data class SettingsBackupSnapshot(
     val darkTheme: Boolean = true,
     val hapticProfile: HapticProfile = HapticProfile.STUDIO,
     val navBarStyle: NavBarStyle = NavBarStyle.FLOATING_GLASS,
-    val visualEffectsEnhanced: Boolean = false,
+    val visualEffectsEnhanced: Boolean = true,
     val showLibraryHero: Boolean = true,
     val showGeneralAudioNotice: Boolean = true,
     val enableGeneralAudioMode: Boolean = true,
@@ -87,7 +87,7 @@ private data class AppearanceBackupDto(
     val darkTheme: Boolean = true,
     val hapticProfile: String = HapticProfile.STUDIO.name,
     val navBarStyle: String = NavBarStyle.FLOATING_GLASS.name,
-    val visualEffectsEnhanced: Boolean = false,
+    val visualEffectsEnhanced: Boolean = true,
     val showLibraryHero: Boolean = true,
     val showGeneralAudioNotice: Boolean = true,
     val enableGeneralAudioMode: Boolean = true,
@@ -115,12 +115,12 @@ private data class LyricSettingsBackupDto(
     val activeOnlineSource: String = LyricSource.ALL.name,
     val enableLyricBlur: Boolean = true,
     val enableImmersiveLyrics: Boolean = false,
-    val enableElasticLyricWave: Boolean = false
+    val enableElasticLyricWave: Boolean = true
 )
 
 private data class AudioTransitionBackupDto(
-    val mode: String = AudioTransitionMode.GAPLESS.name,
-    val durationMs: Int = 3500,
+    val mode: String = AudioTransitionMode.CROSSFADE.name,
+    val durationMs: Int = 5000,
     val fadeOnManualSkip: Boolean = false,
     val fadeOnPlayPause: Boolean = true
 )

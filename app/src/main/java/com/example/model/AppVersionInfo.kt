@@ -17,10 +17,10 @@ data class PreReleaseMilestone(
  */
 object AppVersionInfo {
     const val APP_DISPLAY_NAME = "Auralis"
-    const val CURRENT_VERSION = "1.0.2"
-    const val PREVIOUS_VERSION = "1.0.1"
+    const val CURRENT_VERSION = "1.0.3"
+    const val PREVIOUS_VERSION = "1.0.2"
     const val FIRST_PUBLIC_VERSION = "0.9.0"
-    const val APK_COMPAT_LABEL = "安装包版本 1.0.2 (Build 2)"
+    const val APK_COMPAT_LABEL = "安装包版本 1.0.3 (Build 3)"
 
     const val PRE_RELEASE_NOTE =
         "v0.9.0 是第一个在 GitHub 公开维护的版本。在此之前的早期开发阶段未单独切分版本号，应用历经了以下核心演进路径："
@@ -46,8 +46,19 @@ object AppVersionInfo {
 
     val RELEASE_NOTES: List<AppReleaseNote> = listOf(
         AppReleaseNote(
-            version = "1.0.2",
+            version = "1.0.3",
             tag = "当前版本",
+            title = "修复 EQ 音效偶发连续卡顿 · 根治播放页触控穿透 · 开箱默认视觉与交叉淡化升级 · 安装包版本号同步升级",
+            highlights = listOf(
+                "彻底修复开启 10 段均衡器（EQ）后播放部分高解析无损（如 192kHz FLAC / WAV）曲目时偶发连续卡顿的问题：底层 DynamicsProcessing 切换为低延迟时间分辨率管线并配置自动前级余量补偿与温和限幅保护，低音增强与环绕声场改为按需挂载（0% 时彻底释放零占用），消除重复状态重设，同时为双路 ExoPlayer 扩展 AudioTrack PCM 缓冲池并禁用易冲突的浮点直通路径。",
+                "彻底修复播放页面空白区域可穿透误触下方首页、列表与悬浮底栏的严重交互缺陷：为全屏播放页、10 段均衡器、歌词工坊及首次引导遮罩统一接入底层触控屏障，保留页内全部点击、拖动、封面 3D 滑切与下拉收起手势的同时完全杜绝手势泄漏到底层页面。",
+                "升级开箱默认体验：默认开启「视觉效果增强（旗舰光影与流体极光）」与「歌词灵动弹性波浪」，并将「播放与过渡」默认调整为 5.0 秒「等功率交叉淡化」，首次安装即可体验完整视听表现。",
+                "同步更新 Android 安装包版本号至 versionName 1.0.3（versionCode 3）。"
+            )
+        ),
+        AppReleaseNote(
+            version = "1.0.2",
+            tag = "历史版本",
             title = "彻底根治无封面屏蔽失效 · 严格「且」逻辑与存量清理 · 系统「应用」父级入口精修 · 安装包版本号同步升级",
             highlights = listOf(
                 "彻底修复扫描时勾选「屏蔽无封面」后仍导入无封面默认图标曲目的问题：移除此前将「专辑名」与「内嵌封面」以「或（OR）」合并判定的缺陷（系统 MediaStore 会自动将文件夹名填作专辑名导致无封面文件绕过校验），改为严格校验音频文件真实有效的内嵌图片头与缓存文件，且所有已勾选的筛选条件均按严格「且（AND）」逻辑同时满足。",

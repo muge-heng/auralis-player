@@ -85,6 +85,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.blockUnderlyingTouches
 import com.example.ui.theme.AuraViolet
 import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.EmeraldLossless
@@ -180,6 +181,7 @@ fun AuralisLaunchSplashOverlay(
                 scaleY = exitScale
             }
             .background(ObsidianVoid)
+            .blockUnderlyingTouches()
             .testTag("auralis_launch_splash"),
         contentAlignment = Alignment.Center
     ) {
@@ -407,6 +409,7 @@ fun AuralisOnboardingScreen(
         modifier = modifier
             .fillMaxSize()
             .background(ObsidianVoid)
+            .blockUnderlyingTouches()
             .statusBarsPadding()
             .navigationBarsPadding()
             .testTag("auralis_onboarding_screen")
@@ -1557,6 +1560,7 @@ fun FirstLaunchWelcomeOverlay(
                 scaleY = s
             }
             .background(ObsidianVoid)
+            .blockUnderlyingTouches()
             .testTag("first_launch_welcome_overlay"),
         contentAlignment = Alignment.Center
     ) {

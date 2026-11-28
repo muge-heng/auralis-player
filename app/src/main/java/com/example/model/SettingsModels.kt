@@ -294,7 +294,7 @@ data class LyricSettings(
     val activeOnlineSource: LyricSource = LyricSource.ALL,
     val enableLyricBlur: Boolean = true,
     val enableImmersiveLyrics: Boolean = false,
-    val enableElasticLyricWave: Boolean = false
+    val enableElasticLyricWave: Boolean = true
 ) {
     val fontWeightLabel: String
         get() = when {
@@ -444,15 +444,15 @@ enum class AudioTransitionMode(
             get() = entries.filter { it.isSecondary }
 
         fun fromStored(raw: String?): AudioTransitionMode {
-            if (raw.isNullOrBlank()) return GAPLESS
-            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: GAPLESS
+            if (raw.isNullOrBlank()) return CROSSFADE
+            return entries.firstOrNull { it.name.equals(raw, ignoreCase = true) } ?: CROSSFADE
         }
     }
 }
 
 data class AudioTransitionConfig(
-    val mode: AudioTransitionMode = AudioTransitionMode.GAPLESS,
-    val durationMs: Int = 3500, // 1500..10000 ms
+    val mode: AudioTransitionMode = AudioTransitionMode.CROSSFADE,
+    val durationMs: Int = 5000, // 1500..10000 ms
     val fadeOnManualSkip: Boolean = false,
     val fadeOnPlayPause: Boolean = true
 ) {

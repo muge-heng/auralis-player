@@ -144,7 +144,7 @@ class PreferencesRepository(private val context: Context) {
     }
 
     val visualEffectsEnhancedFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
-        prefs[Keys.VISUAL_EFFECTS_ENHANCED] ?: false
+        prefs[Keys.VISUAL_EFFECTS_ENHANCED] ?: true
     }
 
     val showLibraryHeroFlow: Flow<Boolean> = context.auralisDataStore.data.map { prefs ->
@@ -190,14 +190,14 @@ class PreferencesRepository(private val context: Context) {
             activeOnlineSource = src,
             enableLyricBlur = prefs[Keys.LYRIC_ENABLE_BLUR] ?: true,
             enableImmersiveLyrics = prefs[Keys.LYRIC_ENABLE_IMMERSIVE] ?: false,
-            enableElasticLyricWave = prefs[Keys.LYRIC_ENABLE_ELASTIC_WAVE] ?: false
+            enableElasticLyricWave = prefs[Keys.LYRIC_ENABLE_ELASTIC_WAVE] ?: true
         )
     }
 
     val audioTransitionFlow: Flow<AudioTransitionConfig> = context.auralisDataStore.data.map { prefs ->
         AudioTransitionConfig(
             mode = AudioTransitionMode.fromStored(prefs[Keys.TRANSITION_MODE]),
-            durationMs = (prefs[Keys.TRANSITION_DURATION_MS] ?: 3500).coerceIn(1500, 10_000),
+            durationMs = (prefs[Keys.TRANSITION_DURATION_MS] ?: 5000).coerceIn(1500, 10_000),
             fadeOnManualSkip = prefs[Keys.TRANSITION_MANUAL_SKIP] ?: false,
             fadeOnPlayPause = prefs[Keys.TRANSITION_PLAY_PAUSE] ?: true
         )

@@ -103,6 +103,7 @@ import com.example.ui.components.MiniPlayerBar
 import com.example.ui.components.MorphingFloatingArtwork
 import com.example.ui.components.SmartScanConfirmDialog
 import com.example.ui.components.TopStatusToast
+import com.example.ui.components.blockUnderlyingTouches
 import com.example.ui.components.TopUndoBanner
 import com.example.ui.components.liquidGlassBackdropSource
 import com.example.ui.components.rememberLiquidGlassBackdropState
@@ -1021,6 +1022,7 @@ private fun AuralisRootApp(viewModel: AuralisViewModel) {
                     .fillMaxSize()
                     .offset { IntOffset(0, offsetYPx) }
                     .clip(RoundedCornerShape(topStart = sheetCornerDp, topEnd = sheetCornerDp))
+                    .blockUnderlyingTouches()
             ) {
                 NowPlayingSheet(
                     playbackState = playbackState,

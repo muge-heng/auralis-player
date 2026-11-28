@@ -113,6 +113,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
+import com.example.ui.components.blockUnderlyingTouches
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
@@ -233,7 +234,7 @@ fun NowPlayingSheet(
     audioBookmarks: List<AudioBookmark> = emptyList(),
     eqEnabled: Boolean,
     darkTheme: Boolean = true,
-    visualEffectsEnhanced: Boolean = false,
+    visualEffectsEnhanced: Boolean = true,
     artworkAlpha: Float = 1f,
     onActiveArtworkBoundsChanged: (Rect, Dp) -> Unit = { _, _ -> },
     onStageChanged: (NowPlayingStage) -> Unit = {},
@@ -364,6 +365,7 @@ fun NowPlayingSheet(
         modifier = Modifier
             .fillMaxSize()
             .background(backdropColor)
+            .blockUnderlyingTouches()
             .onGloballyPositioned { coords ->
                 sheetRootOffset = coords.positionInRoot()
             }

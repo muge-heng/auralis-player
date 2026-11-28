@@ -507,23 +507,24 @@ class ExampleUnitTest {
 
     @Test
     fun appVersionInfoTracksSemanticVersionAndPreReleaseOrigin() {
-        assertEquals("1.0.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
+        assertEquals("1.0.3", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.PREVIOUS_VERSION)
         assertEquals("0.9.0", com.example.model.AppVersionInfo.FIRST_PUBLIC_VERSION)
-        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 13)
-        assertEquals("1.0.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
-        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
-        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
-        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
-        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
-        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
-        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
-        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
-        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
-        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
-        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
-        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[11].version)
-        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[12].version)
+        assertTrue(com.example.model.AppVersionInfo.RELEASE_NOTES.size >= 14)
+        assertEquals("1.0.3", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.2", com.example.model.AppVersionInfo.RELEASE_NOTES[1].version)
+        assertEquals("1.0.1", com.example.model.AppVersionInfo.RELEASE_NOTES[2].version)
+        assertEquals("1.0.0", com.example.model.AppVersionInfo.RELEASE_NOTES[3].version)
+        assertEquals("0.9.9", com.example.model.AppVersionInfo.RELEASE_NOTES[4].version)
+        assertEquals("0.9.8", com.example.model.AppVersionInfo.RELEASE_NOTES[5].version)
+        assertEquals("0.9.7", com.example.model.AppVersionInfo.RELEASE_NOTES[6].version)
+        assertEquals("0.9.6", com.example.model.AppVersionInfo.RELEASE_NOTES[7].version)
+        assertEquals("0.9.5", com.example.model.AppVersionInfo.RELEASE_NOTES[8].version)
+        assertEquals("0.9.4", com.example.model.AppVersionInfo.RELEASE_NOTES[9].version)
+        assertEquals("0.9.3", com.example.model.AppVersionInfo.RELEASE_NOTES[10].version)
+        assertEquals("0.9.2", com.example.model.AppVersionInfo.RELEASE_NOTES[11].version)
+        assertEquals("0.9.1", com.example.model.AppVersionInfo.RELEASE_NOTES[12].version)
+        assertEquals("0.9.0", com.example.model.AppVersionInfo.RELEASE_NOTES[13].version)
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_NOTE.contains("GitHub"))
         assertTrue(com.example.model.AppVersionInfo.PRE_RELEASE_MILESTONES.size >= 3)
     }
@@ -903,10 +904,10 @@ class ExampleUnitTest {
         assertEquals(2, com.example.ui.components.computeLiquidNavTargetIndex(250f, 400f, 4))
         assertEquals(3, com.example.ui.components.computeLiquidNavTargetIndex(450f, 400f, 4))
 
-        // Liquid Glass is the default nav bar & v1.0.2 is active
+        // Liquid Glass is the default nav bar & v1.0.3 is active
         assertEquals(com.example.model.NavBarStyle.FLOATING_GLASS, com.example.model.NavBarStyle.entries.first())
-        assertEquals("1.0.2", com.example.model.AppVersionInfo.CURRENT_VERSION)
-        assertEquals("1.0.2", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
+        assertEquals("1.0.3", com.example.model.AppVersionInfo.CURRENT_VERSION)
+        assertEquals("1.0.3", com.example.model.AppVersionInfo.RELEASE_NOTES.first().version)
 
         // Light-mode deep amber-gold must be substantially darker (higher contrast on light canvas) than dark-mode ChampagneGold
         val darkGoldLum = com.example.ui.theme.ChampagneGold.red * 0.299f +
@@ -1585,6 +1586,38 @@ class ExampleUnitTest {
         )
         assertEquals(1, syncedAnalysis.updatedExistingTracks.size)
         assertTrue(syncedAnalysis.updatedExistingTracks.first().isGeneralAudio)
+    }
+
+    @Test
+    fun v103DefaultsAndAutoPreampHeadroomPreventClipping() {
+        // 1. v1.0.3 out-of-the-box visual & transition defaults
+        assertTrue(com.example.data.local.SettingsBackupSnapshot().visualEffectsEnhanced)
+        assertTrue(LyricSettings().enableElasticLyricWave)
+        val defaultTransition = com.example.model.AudioTransitionConfig()
+        assertEquals(com.example.model.AudioTransitionMode.CROSSFADE, defaultTransition.mode)
+        assertEquals(5000, defaultTransition.durationMs)
+        assertEquals(
+            com.example.model.AudioTransitionMode.CROSSFADE,
+            com.example.model.AudioTransitionMode.fromStored(null)
+        )
+
+        // 2. Auto preamp headroom stays 0 dB for flat EQ and attenuates safely for boosted bands
+        assertEquals(
+            0f,
+            com.example.playback.computeAutoPreampHeadroomDb(List(EQ_BAND_COUNT) { 0f }, 0),
+            0.001f
+        )
+        val boostedHeadroom = com.example.playback.computeAutoPreampHeadroomDb(
+            listOf(6.5f, 5.5f, 4.0f, 2.0f, 0f, -0.5f, 0.5f, 1.5f, 2.0f, 2.0f),
+            bassBoostPercent = 55
+        )
+        assertTrue("Boosted EQ must apply negative headroom ($boostedHeadroom)", boostedHeadroom in -7.5f..-4.0f)
+
+        val extremeHeadroom = com.example.playback.computeAutoPreampHeadroomDb(
+            List(EQ_BAND_COUNT) { 12f },
+            bassBoostPercent = 100
+        )
+        assertEquals(-10f, extremeHeadroom, 0.001f)
     }
 }
 

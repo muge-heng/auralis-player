@@ -34,7 +34,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.isTraversalGroup
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -48,6 +52,23 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+
+/**
+ * Blocks pointer hit-testing and accessibility traversal from passing through full-screen
+ * modal sheets or overlays to sibling screens underneath, without consuming events that
+ * belong to child buttons, sliders, scrollable lists, or drag handles inside this overlay.
+ */
+fun Modifier.blockUnderlyingTouches(): Modifier = this
+    .semantics(mergeDescendants = false) {
+        isTraversalGroup = true
+    }
+    .pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitPointerEvent(PointerEventPass.Final)
+            }
+        }
+    }
 
 /**
  * Tactile spring press-bounce modifier for primary controls and interactive cards.

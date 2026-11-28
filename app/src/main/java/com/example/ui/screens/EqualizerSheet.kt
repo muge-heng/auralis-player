@@ -66,6 +66,7 @@ import com.example.model.EqState
 import com.example.model.normalizeEqBands
 import com.example.playback.AcousticDspEngine
 import com.example.playback.StudioEqPresets
+import com.example.ui.components.blockUnderlyingTouches
 import com.example.ui.theme.ChampagneGold
 import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.EmeraldLossless
@@ -93,6 +94,7 @@ fun EqualizerSheet(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .blockUnderlyingTouches()
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {

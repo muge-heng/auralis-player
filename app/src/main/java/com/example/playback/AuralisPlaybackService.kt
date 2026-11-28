@@ -14,7 +14,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -165,9 +169,30 @@ class AuralisPlaybackService : MediaSessionService() {
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
 
+        // Expanded PCM AudioTrack buffer + standard PCM output prevent AudioFlinger underrun stutter
+        // when 10-band DynamicsProcessing EQ is active on Hi-Res 96/192kHz FLAC or WAV streams.
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                val bufferSizeProvider = DefaultAudioTrackBufferSizeProvider.Builder()
+                    .setMinPcmBufferDurationUs(500_000)
+                    .setMaxPcmBufferDurationUs(1_200_000)
+                    .setPcmBufferMultiplicationFactor(4)
+                    .build()
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(false)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioTrackBufferSizeProvider(bufferSizeProvider)
+                    .build()
+            }
+        }
+
         // handleAudioFocus = false so Deck A and Deck B NEVER steal AudioFocus from each other
         // during overlapping crossfades; service-level AudioManager focus coordinates both decks cleanly.
-        val exo = ExoPlayer.Builder(this)
+        val exo = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ false)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)

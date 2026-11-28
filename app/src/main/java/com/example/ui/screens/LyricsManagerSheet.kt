@@ -66,6 +66,7 @@ import com.example.model.OnlineLyricCandidate
 import com.example.model.Track
 import com.example.model.lyricFontScaleLabel
 import com.example.model.snapLyricFontScale
+import com.example.ui.components.blockUnderlyingTouches
 import com.example.ui.theme.EmeraldLossless
 import com.example.ui.theme.adaptiveGoldColor
 import com.example.ui.theme.adaptiveLyricSourceColor
@@ -104,6 +105,7 @@ fun LyricsManagerSheet(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .blockUnderlyingTouches()
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
