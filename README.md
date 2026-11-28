@@ -20,6 +20,49 @@
 
 ---
 
+## 界面实拍预览
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/01_library_dark.jpg" alt="高保真本地唱片馆" width="210" /><br/>
+      <sub><b>高保真本地唱片馆</b><br/>双分区隔离 · Liquid Glass 底栏</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/02_now_playing_cover.jpg" alt="Hi-Res 流体光影播放页" width="210" /><br/>
+      <sub><b>Hi-Res 流体光影舞台</b><br/>24-bit/192kHz · 3D 滑切</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/03_synced_lyrics.jpg" alt="双语逐字歌词与景深模糊" width="210" /><br/>
+      <sub><b>双语逐字歌词舞台</b><br/>逐字扫光 · 非本行景深模糊</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/04_lyrics_search.jpg" alt="四源并发云端歌词检索" width="210" /><br/>
+      <sub><b>四源并发云端搜词</b><br/>网易云 / QQ / 酷狗 / LRCLIB</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/05_general_audio.jpg" alt="普通音频专属学习播放模式" width="210" /><br/>
+      <sub><b>普通音频学习模式</b><br/>±15s 跳播 · 3.0x 倍速 · 书签</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/06_equalizer_10band.jpg" alt="10 段母带声学均衡器" width="210" /><br/>
+      <sub><b>10 段硬件均衡器</b><br/>低延迟 DSP · 母带预设</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/07_transitions.jpg" alt="真双轨交叉淡化与人声接唱" width="210" /><br/>
+      <sub><b>真双轨智能过渡</b><br/>5.0s 交叉淡化 · 人声接唱</sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/screenshots/08_ai_studio.jpg" alt="DeepSeek 联网思考与 AI 定制 EQ" width="210" /><br/>
+      <sub><b>AI 声学对话工作台</b><br/>DeepSeek 联网检索 · 一键 EQ</sub>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 核心特性
 
 ### 1. 高保真本地唱片馆与「普通音频区」智能分流
